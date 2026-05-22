@@ -12,18 +12,14 @@
 
 Добавить минимальный content registry с загрузкой прототипов без игровой симуляции.
 
-## Roadmap revision note
-
-Раньше это был S05. Перенесено на S04, потому что сценарии требуют fixed tick и не должны идти раньше мира.
-
 
 ## Требования к реализации
 
 - Создать crate `flux_content`.
 - Реализовать `ContentRegistry`.
-- Реализовать минимальные прототипы:
-  - `MaterialPrototype`;
-  - `BuildingPrototype`.
+- На этом этапе намеренно реализуются только два минимальных типа прототипов:
+  - `SubstancePrototype` (id: PrototypeId, display_name: LocalizationKey);
+  - `StructurePrototype` (id: PrototypeId, display_name: LocalizationKey, size: TileSize).
 - Загрузка content files идет из модов, найденных и отсортированных через `S03`.
 - Формат content files: RON.
 - Поддержать минимальный deterministic patching.
@@ -39,7 +35,7 @@
 
 ## Ручная проверка
 
-1. Создать content file с одним материалом.
+1. Создать content file с одним веществом.
 2. Запустить diagnostic command, печатающий registry summary.
 3. Убедиться, что материал отображается в summary.
 4. Добавить duplicate ID.
