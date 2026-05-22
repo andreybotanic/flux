@@ -1,4 +1,4 @@
-## Stage
+﻿## Stage
 
 - Stage ID: S__
 - Stage document: `docs/stages/S___.md`

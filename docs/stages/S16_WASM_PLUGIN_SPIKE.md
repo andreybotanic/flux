@@ -1,4 +1,4 @@
-# S16 — WASM plugin spike
+﻿# S16 — WASM plugin spike
 
 ## Depends on
 

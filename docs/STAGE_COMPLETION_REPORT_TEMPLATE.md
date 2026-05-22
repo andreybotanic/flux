@@ -1,4 +1,4 @@
-# Stage completion report template
+﻿# Stage completion report template
 
 ```text
 Stage:

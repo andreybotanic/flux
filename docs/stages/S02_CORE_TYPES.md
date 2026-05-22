@@ -1,4 +1,4 @@
-# S02 — Core IDs, versions, errors
+﻿# S02 — Core IDs, versions, errors
 
 ## Depends on
 

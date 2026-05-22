@@ -1,4 +1,4 @@
-# S08 — UI registry MVP
+﻿# S08 — UI registry MVP
 
 ## Depends on
 

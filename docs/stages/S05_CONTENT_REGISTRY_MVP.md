@@ -1,4 +1,4 @@
-# S05 — Content registry MVP
+﻿# S05 — Content registry MVP
 
 ## Depends on
 

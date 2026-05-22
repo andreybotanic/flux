@@ -1,4 +1,4 @@
-# S10 — WorldGrid SoA + chunk metadata
+﻿# S10 — WorldGrid SoA + chunk metadata
 
 ## Depends on
 

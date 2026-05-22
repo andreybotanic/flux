@@ -1,4 +1,4 @@
-# S19 — Integration vertical slice
+﻿# S19 — Integration vertical slice
 
 ## Depends on
 

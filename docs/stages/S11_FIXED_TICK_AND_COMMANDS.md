@@ -1,4 +1,4 @@
-# S11 — Fixed tick + command/event loop
+﻿# S11 — Fixed tick + command/event loop
 
 ## Depends on
 

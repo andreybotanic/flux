@@ -1,4 +1,4 @@
-# S06 — base mod MVP
+﻿# S06 — base mod MVP
 
 ## Depends on
 

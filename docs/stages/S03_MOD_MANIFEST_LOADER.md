@@ -1,4 +1,4 @@
-# S03 — Mod manifest discovery/validation
+﻿# S03 — Mod manifest discovery/validation
 
 ## Depends on
 

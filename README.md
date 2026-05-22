@@ -1,4 +1,4 @@
-# FluxEngine
+﻿# FluxEngine
 
 FluxEngine — 2D simulation game/platform written in Rust. The project starts from a strict staged architecture: mods, DLC, content registries, scenario automation, world data layout, UI extension points and GPU backend contracts are designed before full gameplay implementation.
 

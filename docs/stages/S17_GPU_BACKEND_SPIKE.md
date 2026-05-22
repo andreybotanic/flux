@@ -1,4 +1,4 @@
-# S17 — GPU backend contract + compute spike
+﻿# S17 — GPU backend contract + compute spike
 
 ## Depends on
 

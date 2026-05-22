@@ -1,4 +1,4 @@
-# S01 — Bevy app shell + diagnostics
+﻿# S01 — Bevy app shell + diagnostics
 
 ## Depends on
 

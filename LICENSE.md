@@ -1,4 +1,4 @@
-# License placeholder
+﻿# License placeholder
 
 This project is marked as `UNLICENSED` in `Cargo.toml` until the owner chooses a final licensing model.
 
