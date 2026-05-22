@@ -1,14 +1,19 @@
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeMap;
+use std::path::Path;
+
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::render::RenderPlugin;
 use bevy::render::settings::{InstanceFlags, RenderCreation, WgpuSettings};
 use bevy::window::{Window, WindowPlugin};
+use flux_mod_loader::DiscoveredMod;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RunMode {
     Version,
+    ListMods,
     Windowed,
     Headless,
 }
@@ -33,6 +38,10 @@ fn main() {
         RunMode::Version => {
             println!("{}", flux_core::engine_label());
         }
+        RunMode::ListMods => {
+            let exit_code = run_list_mods();
+            std::process::exit(exit_code);
+        }
         RunMode::Windowed => run_windowed(),
         RunMode::Headless => run_headless(),
     }
@@ -44,21 +53,30 @@ where
 {
     let mut wants_version = false;
     let mut wants_headless = false;
+    let mut wants_list_mods = false;
 
     for arg in args {
         match arg {
             "--version" | "-V" => wants_version = true,
             "--headless" => wants_headless = true,
+            "--list-mods" => wants_list_mods = true,
             other => return Err(CliError::UnknownArgument(other.to_owned())),
         }
     }
 
-    if wants_version && wants_headless {
+    let selected_modes =
+        usize::from(wants_version) + usize::from(wants_headless) + usize::from(wants_list_mods);
+
+    if selected_modes > 1 {
         return Err(CliError::ConflictingArguments);
     }
 
     if wants_version {
         return Ok(RunMode::Version);
+    }
+
+    if wants_list_mods {
+        return Ok(RunMode::ListMods);
     }
 
     if wants_headless {
@@ -119,19 +137,69 @@ fn headless_diagnostics() {
     info!("headless diagnostics initialized");
 }
 
+fn run_list_mods() -> i32 {
+    let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
+    let by_mod_id: BTreeMap<&str, &DiscoveredMod> = report
+        .valid_mods
+        .iter()
+        .map(|module| (module.manifest.mod_id.as_str(), module))
+        .collect();
+
+    println!("valid mods: {}", report.valid_mods.len());
+    if !report.valid_mods.is_empty() {
+        if report.errors.is_empty() {
+            let order = report
+                .resolved_order
+                .as_ref()
+                .expect("resolved order must exist when there are no errors");
+            println!("resolved load order:");
+            for mod_id in &order.ordered_mod_ids {
+                if let Some(module) = by_mod_id.get(mod_id.as_str()) {
+                    print_discovered_mod(module);
+                }
+            }
+        } else {
+            println!("valid mods (unordered due to errors):");
+            for module in &report.valid_mods {
+                print_discovered_mod(module);
+            }
+        }
+    }
+
+    if !report.errors.is_empty() {
+        eprintln!("errors: {}", report.errors.len());
+        for error in &report.errors {
+            eprintln!("{error}");
+        }
+        return 1;
+    }
+
+    0
+}
+
+fn print_discovered_mod(module: &DiscoveredMod) {
+    println!(
+        "- id={} version={} api_version={} path={}",
+        module.manifest.mod_id,
+        module.manifest.version,
+        module.manifest.api_version,
+        module.directory_path.display()
+    );
+}
+
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CliError::UnknownArgument(argument) => {
                 write!(
                     f,
-                    "unknown argument: {argument}. Supported args: --version, -V, --headless"
+                    "unknown argument: {argument}. Supported args: --version, -V, --headless, --list-mods"
                 )
             }
             CliError::ConflictingArguments => {
                 write!(
                     f,
-                    "arguments --version and --headless cannot be used together"
+                    "arguments --version, --headless, and --list-mods are mutually exclusive"
                 )
             }
         }
@@ -163,6 +231,14 @@ mod tests {
     }
 
     #[test]
+    fn parses_list_mods_flag() {
+        assert_eq!(
+            parse_run_mode(["--list-mods"].as_slice().iter().copied()),
+            Ok(RunMode::ListMods)
+        );
+    }
+
+    #[test]
     fn defaults_to_windowed_mode() {
         assert_eq!(parse_run_mode(std::iter::empty()), Ok(RunMode::Windowed));
     }
@@ -179,6 +255,14 @@ mod tests {
     fn rejects_conflicting_arguments() {
         assert_eq!(
             parse_run_mode(["--version", "--headless"].as_slice().iter().copied()),
+            Err(CliError::ConflictingArguments)
+        );
+        assert_eq!(
+            parse_run_mode(["--list-mods", "--headless"].as_slice().iter().copied()),
+            Err(CliError::ConflictingArguments)
+        );
+        assert_eq!(
+            parse_run_mode(["--version", "--list-mods"].as_slice().iter().copied()),
             Err(CliError::ConflictingArguments)
         );
     }

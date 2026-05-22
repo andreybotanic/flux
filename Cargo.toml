@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/flux_core",
     "crates/flux_app",
+    "crates/flux_mod_loader",
 ]
 
 [workspace.package]
@@ -12,6 +13,7 @@ authors = ["FluxEngine developers"]
 
 [workspace.dependencies]
 flux_core = { path = "crates/flux_core" }
+flux_mod_loader = { path = "crates/flux_mod_loader" }
 
 [profile.dev]
 debug = true

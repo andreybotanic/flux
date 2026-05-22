@@ -12,3 +12,4 @@ path = "src/main.rs"
 [dependencies]
 bevy = "0.17"
 flux_core.workspace = true
+flux_mod_loader.workspace = true
