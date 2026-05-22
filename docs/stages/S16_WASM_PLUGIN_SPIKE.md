@@ -2,42 +2,45 @@
 
 ## Depends on
 
-S03
+- S03
+- S08
 
 ## Можно выполнять параллельно с
 
-S15, S17
+- S14
+- S15
+- S17
 
 ## Цель этапа
 
 Проверить runtime-плагины через WASM на минимальном событии/команде.
 
-## Зона ответственности
+## Roadmap revision note
+
+Теперь зависит от command/event loop.
 
 
-- Create experimental `flux_mod_runtime`.
-- Load minimal WASM plugin or stub runtime.
-- Host event -> plugin -> validated command -> host applies command.
+## Требования к реализации
 
+- Создать экспериментальный `flux_mod_runtime`.
+- Подключить выбранный WASM runtime или documented stub, если runtime слишком тяжел для этого этапа.
+- Минимальный контракт:
+  - host event -> wasm plugin -> validated command -> host applies command.
+- Плагин получает событие `GameStarted`/`ScenarioStarted` и возвращает diagnostic/log command.
 
-## Запрещено в этом этапе
+## Запрещено
 
+- Не давать WASM доступ к Bevy World.
+- Не давать WASM доступ к WorldGrid напрямую.
+- Не переносить scenario DSL в WASM.
 
-- No direct Bevy World access.
-- No direct WorldGrid access.
-- No full plugin API.
+## Ручная проверка
 
+1. Включить test wasm mod.
+2. Запустить app/scenario.
+3. Убедиться, что plugin diagnostic log появился.
+4. Сломать plugin и убедиться, что host не падает panic-ом.
 
-## Глобальные требования, которые нужно соблюдать
-
-- ID только в формате `namespace:path/to/item`, например `base:building/gas_pump`.
-- Manifest/config — TOML.
-- Content/scenarios/patches — RON.
-- Save manifest/diagnostic summaries/replay logs — JSON или NDJSON согласно `docs/02_PROJECT_CONVENTIONS.md`.
-- Crates — `flux_*`.
-- Public types — `PascalCase`, acronyms as `Ui`, `Gpu`, `Cpu`, `Dlc`, `Wasm`.
-- Моды не получают прямой доступ к Bevy World.
-- Клетки мира не являются Bevy entities.
 
 ## Automated checks
 
@@ -48,43 +51,10 @@ cargo test --workspace
 python3 scripts/check_plan_index.py
 ```
 
-## Manual verification
-
-
-1. Enable test WASM mod.
-2. Run app/scenario.
-3. Confirm plugin diagnostic log appears.
-4. Break plugin and confirm host reports structured error.
-
-
 ## Definition of Done
 
-- Automated checks passed.
-- Manual verification completed.
-- Stage responsibility implemented and documented.
-- No future stage implemented “along the way”.
-- No global convention violated.
-
-## Ожидаемый отчет исполнителя
-
-```text
-Implemented:
-- ...
-
-Manual verification:
-- command: ...
-- expected result: ...
-- actual result: ...
-
-Automated checks:
-- cargo fmt --all --check: pass/fail
-- cargo clippy --workspace --all-targets -- -D warnings: pass/fail
-- cargo test --workspace: pass/fail
-- python3 scripts/check_plan_index.py: pass/fail
-
-Touched files:
-- ...
-
-Known limitations:
-- ...
-```
+- Реализована только зона ответственности этапа.
+- Все automated checks проходят.
+- Выполнена ручная проверка из этого документа.
+- Нет изменений вне зоны ответственности без объяснения.
+- Отчет этапа заполнен по `docs/STAGE_COMPLETION_REPORT_TEMPLATE.md`.

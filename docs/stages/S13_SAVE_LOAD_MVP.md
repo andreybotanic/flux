@@ -1,42 +1,46 @@
-﻿# S15 — Replay/determinism harness
+﻿# S13 — Save/load MVP
 
 ## Depends on
 
+- S08
 - S09
-- S14
 
 ## Можно выполнять параллельно с
 
-- S16
-- S17
+- S11
+- S14
 
 ## Цель этапа
 
-Добавить replay harness, command log и проверку воспроизводимости результата.
-
-## Roadmap revision note
-
-Теперь зависит от scenario runtime.
+Добавить минимальное сохранение и загрузку мира с manifest активных модов и scenario steps.
 
 
 ## Требования к реализации
 
-- Записывать command log:
+- Создать crate `flux_save`.
+- Сохранять:
+  - save manifest;
+  - world dimensions;
+  - seed;
   - tick;
-  - command;
-  - source.
-- Добавить replay mode.
-- Добавить state hash на выбранных слоях мира.
-- Добавить assertions:
-  - `AssertWorldHash(hash)`;
-  - или `RecordWorldHash(label)` + comparison.
+  - минимальные слои WorldGrid;
+  - active mods list;
+  - registry signature/hash placeholder.
+- Добавить scenario steps:
+  - `SaveGame(name)`;
+  - `LoadGame(name)`;
+  - `AssertWorldLoaded`.
 
 ## Ручная проверка
 
-1. Запустить deterministic scenario.
-2. Получить hash.
-3. Запустить replay.
-4. Убедиться, что hash совпадает.
+1. Запустить scenario:
+   - CreateWorld;
+   - WaitTicks 3;
+   - SaveGame;
+   - LoadGame;
+   - AssertWorldLoaded.
+2. Проверить файл сейва на диске.
+3. Убедиться, что manifest содержит active mods.
 
 
 ## Automated checks

@@ -1,42 +1,33 @@
-﻿# S15 — Replay/determinism harness
+﻿# S05 — Base mod MVP
 
 ## Depends on
 
-- S09
-- S14
+- S04
 
 ## Можно выполнять параллельно с
 
-- S16
-- S17
+- S10
 
 ## Цель этапа
 
-Добавить replay harness, command log и проверку воспроизводимости результата.
-
-## Roadmap revision note
-
-Теперь зависит от scenario runtime.
+Сделать базовую игру обычным модом `base` с минимальным контентом.
 
 
 ## Требования к реализации
 
-- Записывать command log:
-  - tick;
-  - command;
-  - source.
-- Добавить replay mode.
-- Добавить state hash на выбранных слоях мира.
-- Добавить assertions:
-  - `AssertWorldHash(hash)`;
-  - или `RecordWorldHash(label)` + comparison.
+- Создать `mods/base/manifest.toml`.
+- Добавить минимальный content:
+  - 2-3 материала;
+  - 1 тестовое здание.
+- `base` должен грузиться тем же pipeline, что и любой внешний мод.
+- Запрещена special-case логика вида `if mod_id == "base"`.
 
 ## Ручная проверка
 
-1. Запустить deterministic scenario.
-2. Получить hash.
-3. Запустить replay.
-4. Убедиться, что hash совпадает.
+1. Запустить diagnostic mode/list mods.
+2. Убедиться, что `base` найден как мод.
+3. Запустить content summary.
+4. Убедиться, что материалы и здание из `base` попали в registry.
 
 
 ## Automated checks

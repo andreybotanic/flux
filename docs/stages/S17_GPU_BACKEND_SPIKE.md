@@ -2,42 +2,38 @@
 
 ## Depends on
 
-S11
+- S08
 
 ## Можно выполнять параллельно с
 
-S16
+- S15
+- S16
+- S18
 
 ## Цель этапа
 
-Добавить контракт simulation backend и экспериментальный GPU compute spike на простой операции.
+Добавить контракт simulation backend и экспериментальный GPU compute spike.
 
-## Зона ответственности
+## Roadmap revision note
 
-
-- Add `SimulationBackend` trait.
-- Keep `CpuSimulationBackend` as baseline.
-- Add GPU compute spike for one simple operation or toy heat step with CPU reference.
+Раньше зависел от S11; теперь от нового S08.
 
 
-## Запрещено в этом этапе
+## Требования к реализации
 
+- Добавить `SimulationBackend` trait.
+- Реализовать `CpuSimulationBackend` как baseline.
+- Добавить GPU compute spike для простой операции.
+- GPU не должен быть обязательным для запуска.
+- Должен быть CPU fallback.
 
-- No GPU-only simulation.
-- No removal of CPU path.
-- No full simulation port.
+## Ручная проверка
 
+1. Запустить app с CPU backend.
+2. Запустить app с GPU backend flag.
+3. Проверить diagnostic log выбранного backend.
+4. Если GPU недоступен, fallback должен быть понятным.
 
-## Глобальные требования, которые нужно соблюдать
-
-- ID только в формате `namespace:path/to/item`, например `base:building/gas_pump`.
-- Manifest/config — TOML.
-- Content/scenarios/patches — RON.
-- Save manifest/diagnostic summaries/replay logs — JSON или NDJSON согласно `docs/02_PROJECT_CONVENTIONS.md`.
-- Crates — `flux_*`.
-- Public types — `PascalCase`, acronyms as `Ui`, `Gpu`, `Cpu`, `Dlc`, `Wasm`.
-- Моды не получают прямой доступ к Bevy World.
-- Клетки мира не являются Bevy entities.
 
 ## Automated checks
 
@@ -48,42 +44,10 @@ cargo test --workspace
 python3 scripts/check_plan_index.py
 ```
 
-## Manual verification
-
-
-1. Run CPU backend.
-2. Run GPU backend flag.
-3. Confirm selected backend log or graceful fallback.
-
-
 ## Definition of Done
 
-- Automated checks passed.
-- Manual verification completed.
-- Stage responsibility implemented and documented.
-- No future stage implemented “along the way”.
-- No global convention violated.
-
-## Ожидаемый отчет исполнителя
-
-```text
-Implemented:
-- ...
-
-Manual verification:
-- command: ...
-- expected result: ...
-- actual result: ...
-
-Automated checks:
-- cargo fmt --all --check: pass/fail
-- cargo clippy --workspace --all-targets -- -D warnings: pass/fail
-- cargo test --workspace: pass/fail
-- python3 scripts/check_plan_index.py: pass/fail
-
-Touched files:
-- ...
-
-Known limitations:
-- ...
-```
+- Реализована только зона ответственности этапа.
+- Все automated checks проходят.
+- Выполнена ручная проверка из этого документа.
+- Нет изменений вне зоны ответственности без объяснения.
+- Отчет этапа заполнен по `docs/STAGE_COMPLETION_REPORT_TEMPLATE.md`.

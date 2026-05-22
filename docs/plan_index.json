@@ -1,5 +1,5 @@
 {
-  "format_version": 3,
+  "format_version": 4,
   "project": "FluxEngine Rewrite Plan",
   "fixed_requirements": {
     "id_format": "namespace:path/to/item",
@@ -75,7 +75,7 @@
         "to": "S04"
       },
       {
-        "from": "S03",
+        "from": "S04",
         "to": "S05"
       },
       {
@@ -83,15 +83,15 @@
         "to": "S06"
       },
       {
-        "from": "S06",
+        "from": "S02",
         "to": "S07"
       },
       {
-        "from": "S05",
+        "from": "S07",
         "to": "S08"
       },
       {
-        "from": "S04",
+        "from": "S03",
         "to": "S09"
       },
       {
@@ -99,28 +99,44 @@
         "to": "S09"
       },
       {
-        "from": "S02",
+        "from": "S04",
         "to": "S10"
       },
       {
-        "from": "S10",
+        "from": "S01",
         "to": "S11"
+      },
+      {
+        "from": "S07",
+        "to": "S11"
+      },
+      {
+        "from": "S09",
+        "to": "S12"
+      },
+      {
+        "from": "S10",
+        "to": "S12"
       },
       {
         "from": "S11",
         "to": "S12"
       },
       {
-        "from": "S10",
+        "from": "S08",
         "to": "S13"
       },
       {
-        "from": "S01",
+        "from": "S09",
         "to": "S13"
       },
       {
-        "from": "S11",
+        "from": "S08",
         "to": "S14"
+      },
+      {
+        "from": "S09",
+        "to": "S15"
       },
       {
         "from": "S14",
@@ -131,11 +147,19 @@
         "to": "S16"
       },
       {
-        "from": "S11",
+        "from": "S08",
+        "to": "S16"
+      },
+      {
+        "from": "S08",
         "to": "S17"
       },
       {
         "from": "S03",
+        "to": "S18"
+      },
+      {
+        "from": "S04",
         "to": "S18"
       },
       {
@@ -144,14 +168,6 @@
       },
       {
         "from": "S06",
-        "to": "S18"
-      },
-      {
-        "from": "S07",
-        "to": "S19"
-      },
-      {
-        "from": "S09",
         "to": "S19"
       },
       {
@@ -171,11 +187,12 @@
   "stages": [
     {
       "id": "S00",
-      "title": "Bootstrap workspace",
+      "title": "Repo bootstrap",
       "file": "docs/stages/S00_REPO_BOOTSTRAP.md",
       "depends_on": [],
       "parallel_with": [],
-      "goal": "Проверить и зафиксировать стартовый workspace, CI, hooks и документацию."
+      "status": "planned",
+      "goal": "Создать/проверить минимальный Rust workspace и стартовые файлы репозитория."
     },
     {
       "id": "S01",
@@ -187,6 +204,7 @@
       "parallel_with": [
         "S02"
       ],
+      "status": "planned",
       "goal": "Создать минимальную Bevy-оболочку приложения с диагностическим режимом запуска."
     },
     {
@@ -199,7 +217,8 @@
       "parallel_with": [
         "S01"
       ],
-      "goal": "Создать базовые типы ID, версий и ошибок для последующих crates."
+      "status": "planned",
+      "goal": "Создать базовые типы: IDs, версии, ошибки, результат."
     },
     {
       "id": "S03",
@@ -209,149 +228,173 @@
         "S02"
       ],
       "parallel_with": [
-        "S10"
+        "S07"
       ],
-      "goal": "Научить проект находить моды и валидировать их TOML-манифесты без загрузки контента."
+      "status": "done",
+      "goal": "Научить проект находить моды и валидировать их манифесты без загрузки контента."
     },
     {
       "id": "S04",
-      "title": "Declarative scenario DSL MVP",
-      "file": "docs/stages/S04_SCENARIO_DSL_MVP.md",
+      "title": "Content registry MVP",
+      "file": "docs/stages/S04_CONTENT_REGISTRY_MVP.md",
       "depends_on": [
         "S03"
       ],
       "parallel_with": [
-        "S05"
+        "S07"
       ],
-      "goal": "Добавить минимальный RON-формат сценариев как модового контента, пока без UI и без мира."
+      "status": "planned",
+      "goal": "Добавить минимальный content registry с загрузкой прототипов без игровой симуляции."
     },
     {
       "id": "S05",
-      "title": "Content registry MVP",
-      "file": "docs/stages/S05_CONTENT_REGISTRY_MVP.md",
+      "title": "Base mod MVP",
+      "file": "docs/stages/S05_BASE_MOD_MVP.md",
       "depends_on": [
-        "S03"
-      ],
-      "parallel_with": [
         "S04"
       ],
-      "goal": "Добавить минимальный RON content registry с загрузкой прототипов без игровой симуляции."
-    },
-    {
-      "id": "S06",
-      "title": "base mod MVP",
-      "file": "docs/stages/S06_BASE_MOD_MVP.md",
-      "depends_on": [
-        "S05"
-      ],
       "parallel_with": [
-        "S08"
+        "S10"
       ],
+      "status": "planned",
       "goal": "Сделать базовую игру обычным модом `base` с минимальным контентом."
     },
     {
-      "id": "S07",
+      "id": "S06",
       "title": "External test mod + patching",
-      "file": "docs/stages/S07_EXTERNAL_TEST_MOD.md",
-      "depends_on": [
-        "S06"
-      ],
-      "parallel_with": [
-        "S10",
-        "S11"
-      ],
-      "goal": "Проверить, что внешний мод может добавить контент и пропатчить контент `base`."
-    },
-    {
-      "id": "S08",
-      "title": "UI registry MVP",
-      "file": "docs/stages/S08_UI_REGISTRY_MVP.md",
+      "file": "docs/stages/S06_EXTERNAL_TEST_MOD.md",
       "depends_on": [
         "S05"
       ],
       "parallel_with": [
-        "S06"
+        "S07",
+        "S08",
+        "S10"
       ],
-      "goal": "Создать декларативный UI registry и первые extension points без сложного UI."
+      "status": "planned",
+      "goal": "Проверить, что внешний мод может добавить контент и пропатчить контент `base`."
     },
     {
-      "id": "S09",
-      "title": "Scenario runner with UI, screenshot and diagnostic logs",
-      "file": "docs/stages/S09_SCENARIO_RUNNER_UI_SCREENSHOT.md",
-      "depends_on": [
-        "S04",
-        "S08"
-      ],
-      "parallel_with": [
-        "S10",
-        "S11"
-      ],
-      "goal": "Расширить сценарии до уровня базовой UI-автоматизации, скриншотов и диагностических логов."
-    },
-    {
-      "id": "S10",
+      "id": "S07",
       "title": "WorldGrid SoA + chunk metadata",
-      "file": "docs/stages/S10_WORLD_GRID_CHUNK_META.md",
+      "file": "docs/stages/S07_WORLD_GRID_CHUNK_META.md",
       "depends_on": [
         "S02"
       ],
       "parallel_with": [
-        "S03",
         "S04",
-        "S05"
+        "S05",
+        "S06"
       ],
+      "status": "planned",
       "goal": "Создать модель мира в плотных массивах с chunk metadata, но без физической симуляции."
     },
     {
-      "id": "S11",
+      "id": "S08",
       "title": "Fixed tick + command/event loop",
-      "file": "docs/stages/S11_FIXED_TICK_AND_COMMANDS.md",
+      "file": "docs/stages/S08_FIXED_TICK_AND_COMMANDS.md",
       "depends_on": [
-        "S10"
+        "S07"
       ],
       "parallel_with": [
-        "S08"
+        "S10"
       ],
+      "status": "planned",
       "goal": "Добавить фиксированный тик симуляции и базовый command/event pipeline."
     },
     {
-      "id": "S12",
-      "title": "Save/load MVP",
-      "file": "docs/stages/S12_SAVE_LOAD_MVP.md",
+      "id": "S09",
+      "title": "Scenario DSL runtime MVP",
+      "file": "docs/stages/S09_SCENARIO_DSL_RUNTIME_MVP.md",
       "depends_on": [
+        "S03",
+        "S08"
+      ],
+      "parallel_with": [
+        "S10",
+        "S11"
+      ],
+      "status": "planned",
+      "goal": "Добавить сценарии как модовый контент с реальным tick-aware runtime."
+    },
+    {
+      "id": "S10",
+      "title": "UI registry MVP",
+      "file": "docs/stages/S10_UI_REGISTRY_MVP.md",
+      "depends_on": [
+        "S04"
+      ],
+      "parallel_with": [
+        "S05",
+        "S06",
+        "S08",
+        "S09"
+      ],
+      "status": "planned",
+      "goal": "Создать декларативный UI registry и первые extension points без сложного UI."
+    },
+    {
+      "id": "S11",
+      "title": "Chunk-based render dirty MVP",
+      "file": "docs/stages/S11_RENDER_CHUNK_DIRTY_MVP.md",
+      "depends_on": [
+        "S01",
+        "S07"
+      ],
+      "parallel_with": [
+        "S09",
+        "S10",
+        "S12",
+        "S14"
+      ],
+      "status": "planned",
+      "goal": "Добавить минимальный рендер мира, где обновления визуала привязаны к dirty chunks."
+    },
+    {
+      "id": "S12",
+      "title": "Scenario runner with UI, screenshot and diagnostic logs",
+      "file": "docs/stages/S12_SCENARIO_RUNNER_UI_SCREENSHOT.md",
+      "depends_on": [
+        "S09",
+        "S10",
         "S11"
       ],
       "parallel_with": [
         "S13",
         "S14"
       ],
-      "goal": "Добавить минимальное сохранение и загрузку мира с manifest активных модов."
+      "status": "planned",
+      "goal": "Расширить сценарии до имитации базовой активности игрока в UI и снятия скриншотов."
     },
     {
       "id": "S13",
-      "title": "Chunk-based render dirty MVP",
-      "file": "docs/stages/S13_RENDER_CHUNK_DIRTY_MVP.md",
+      "title": "Save/load MVP",
+      "file": "docs/stages/S13_SAVE_LOAD_MVP.md",
       "depends_on": [
-        "S10",
-        "S01"
+        "S08",
+        "S09"
       ],
       "parallel_with": [
-        "S12",
+        "S11",
         "S14"
       ],
-      "goal": "Добавить минимальный рендер мира, где обновления визуала привязаны к dirty chunks."
+      "status": "planned",
+      "goal": "Добавить минимальное сохранение и загрузку мира с manifest активных модов и scenario steps."
     },
     {
       "id": "S14",
       "title": "CPU toy simulation",
       "file": "docs/stages/S14_CPU_SIM_TOY.md",
       "depends_on": [
-        "S11"
+        "S08"
       ],
       "parallel_with": [
+        "S11",
         "S12",
-        "S13"
+        "S13",
+        "S16"
       ],
+      "status": "planned",
       "goal": "Добавить первую простую CPU-симуляцию, чтобы проверить fixed tick и структуру мира."
     },
     {
@@ -359,11 +402,14 @@
       "title": "Replay/determinism harness",
       "file": "docs/stages/S15_REPLAY_DETERMINISM.md",
       "depends_on": [
+        "S09",
         "S14"
       ],
       "parallel_with": [
-        "S16"
+        "S16",
+        "S17"
       ],
+      "status": "planned",
       "goal": "Добавить replay harness, command log и проверку воспроизводимости результата."
     },
     {
@@ -371,12 +417,15 @@
       "title": "WASM plugin spike",
       "file": "docs/stages/S16_WASM_PLUGIN_SPIKE.md",
       "depends_on": [
-        "S03"
+        "S03",
+        "S08"
       ],
       "parallel_with": [
+        "S14",
         "S15",
         "S17"
       ],
+      "status": "planned",
       "goal": "Проверить runtime-плагины через WASM на минимальном событии/команде."
     },
     {
@@ -384,12 +433,15 @@
       "title": "GPU backend contract + compute spike",
       "file": "docs/stages/S17_GPU_BACKEND_SPIKE.md",
       "depends_on": [
-        "S11"
+        "S08"
       ],
       "parallel_with": [
-        "S16"
+        "S15",
+        "S16",
+        "S18"
       ],
-      "goal": "Добавить контракт simulation backend и экспериментальный GPU compute spike на простой операции."
+      "status": "planned",
+      "goal": "Добавить контракт simulation backend и экспериментальный GPU compute spike."
     },
     {
       "id": "S18",
@@ -397,14 +449,13 @@
       "file": "docs/stages/S18_DLC_AS_MOD_PROOF.md",
       "depends_on": [
         "S03",
-        "S05",
-        "S06"
+        "S04",
+        "S05"
       ],
       "parallel_with": [
-        "S10",
-        "S11",
-        "S13"
+        "S17"
       ],
+      "status": "planned",
       "goal": "Доказать, что DLC является обычным официальным модом, а не отдельной hardcode-системой."
     },
     {
@@ -412,14 +463,18 @@
       "title": "Integration vertical slice",
       "file": "docs/stages/S19_INTEGRATION_VERTICAL_SLICE.md",
       "depends_on": [
-        "S07",
-        "S09",
+        "S06",
         "S12",
         "S13",
         "S15"
       ],
       "parallel_with": [],
+      "status": "planned",
       "goal": "Собрать первый вертикальный срез платформы: моды, контент, UI, мир, сценарий, скриншот, сохранение, replay."
     }
+  ],
+  "roadmap_revision": "v5-scenario-after-fixed-tick",
+  "completed_stages": [
+    "S03"
   ]
 }

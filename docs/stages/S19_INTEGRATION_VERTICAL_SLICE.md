@@ -2,41 +2,49 @@
 
 ## Depends on
 
-S07, S09, S12, S13, S15
+- S06
+- S12
+- S13
+- S15
 
 ## Можно выполнять параллельно с
 
-Нет.
+- Нет.
 
 ## Цель этапа
 
 Собрать первый вертикальный срез платформы: моды, контент, UI, мир, сценарий, скриншот, сохранение, replay.
 
-## Зона ответственности
+## Roadmap revision note
+
+Финальный интеграционный этап первого roadmap-среза.
 
 
-- Create end-to-end scenario loading base/test mod, opening UI, screenshotting, creating world, saving/loading, replaying and hashing.
-- Fix only integration bugs between already built systems.
+## Требования к реализации
 
+Создать end-to-end scenario:
 
-## Запрещено в этом этапе
+- загрузить `base`;
+- загрузить `test_content_mod`;
+- открыть UI;
+- сделать screenshot;
+- создать мир;
+- применить простое изменение мира;
+- дождаться нескольких ticks;
+- сохранить;
+- загрузить;
+- проверить world hash/replay;
+- записать summary.
 
+## Ручная проверка
 
-- No new major architecture.
-- No gameplay scope expansion.
-- No GPU implementation.
+1. Запустить `platform_vertical_slice` scenario.
+2. Открыть summary.
+3. Проверить diagnostic log.
+4. Проверить screenshot.
+5. Проверить save/load.
+6. Запустить replay и сверить hash.
 
-
-## Глобальные требования, которые нужно соблюдать
-
-- ID только в формате `namespace:path/to/item`, например `base:building/gas_pump`.
-- Manifest/config — TOML.
-- Content/scenarios/patches — RON.
-- Save manifest/diagnostic summaries/replay logs — JSON или NDJSON согласно `docs/02_PROJECT_CONVENTIONS.md`.
-- Crates — `flux_*`.
-- Public types — `PascalCase`, acronyms as `Ui`, `Gpu`, `Cpu`, `Dlc`, `Wasm`.
-- Моды не получают прямой доступ к Bevy World.
-- Клетки мира не являются Bevy entities.
 
 ## Automated checks
 
@@ -47,42 +55,10 @@ cargo test --workspace
 python3 scripts/check_plan_index.py
 ```
 
-## Manual verification
-
-
-1. Run `test_scenarios:scenario/platform_vertical_slice`.
-2. Inspect summary, log, screenshots, command log and save.
-3. Run replay and compare hash.
-
-
 ## Definition of Done
 
-- Automated checks passed.
-- Manual verification completed.
-- Stage responsibility implemented and documented.
-- No future stage implemented “along the way”.
-- No global convention violated.
-
-## Ожидаемый отчет исполнителя
-
-```text
-Implemented:
-- ...
-
-Manual verification:
-- command: ...
-- expected result: ...
-- actual result: ...
-
-Automated checks:
-- cargo fmt --all --check: pass/fail
-- cargo clippy --workspace --all-targets -- -D warnings: pass/fail
-- cargo test --workspace: pass/fail
-- python3 scripts/check_plan_index.py: pass/fail
-
-Touched files:
-- ...
-
-Known limitations:
-- ...
-```
+- Реализована только зона ответственности этапа.
+- Все automated checks проходят.
+- Выполнена ручная проверка из этого документа.
+- Нет изменений вне зоны ответственности без объяснения.
+- Отчет этапа заполнен по `docs/STAGE_COMPLETION_REPORT_TEMPLATE.md`.

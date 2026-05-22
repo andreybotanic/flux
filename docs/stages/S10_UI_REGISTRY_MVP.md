@@ -1,42 +1,40 @@
-﻿# S15 — Replay/determinism harness
+﻿# S10 — UI registry MVP
 
 ## Depends on
 
-- S09
-- S14
+- S04
 
 ## Можно выполнять параллельно с
 
-- S16
-- S17
+- S05
+- S06
+- S08
+- S09
 
 ## Цель этапа
 
-Добавить replay harness, command log и проверку воспроизводимости результата.
-
-## Roadmap revision note
-
-Теперь зависит от scenario runtime.
+Создать декларативный UI registry и первые extension points без сложного UI.
 
 
 ## Требования к реализации
 
-- Записывать command log:
-  - tick;
-  - command;
-  - source.
-- Добавить replay mode.
-- Добавить state hash на выбранных слоях мира.
-- Добавить assertions:
-  - `AssertWorldHash(hash)`;
-  - или `RecordWorldHash(label)` + comparison.
+- Создать crate `flux_ui`.
+- Добавить:
+  - `UiRegistry`;
+  - `UiPanelId`;
+  - `UiActionId`;
+  - `UiExtensionPointId`;
+  - widgets `Panel`, `Label`, `Button`;
+  - operation `AppendChild`.
+- UI definitions загружаются из модов.
+- Мод не должен напрямую spawn-ить Bevy UI entities.
 
 ## Ручная проверка
 
-1. Запустить deterministic scenario.
-2. Получить hash.
-3. Запустить replay.
-4. Убедиться, что hash совпадает.
+1. Запустить app.
+2. Увидеть минимальное меню/панель.
+3. Добавить UI extension из test mod.
+4. Убедиться, что новая кнопка появилась.
 
 
 ## Automated checks

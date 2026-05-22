@@ -2,42 +2,38 @@
 
 ## Depends on
 
-S03, S05, S06
+- S03
+- S04
+- S05
 
 ## Можно выполнять параллельно с
 
-S10, S11, S13
+- S17
 
 ## Цель этапа
 
 Доказать, что DLC является обычным официальным модом, а не отдельной hardcode-системой.
 
-## Зона ответственности
+## Roadmap revision note
+
+Зависимости обновлены под новую нумерацию.
 
 
-- Create `mods/dlc_test` as official mod.
-- Add stub entitlement enable/disable flag.
-- Content appears only when enabled.
+## Требования к реализации
 
+- Создать `mods/dlc_test`.
+- DLC должен иметь обычный manifest и content.
+- Добавить stub entitlement check через config/CLI.
+- Disabled DLC не монтирует контент.
+- Enabled DLC добавляет контент в registry.
 
-## Запрещено в этом этапе
+## Ручная проверка
 
+1. Запустить content summary без DLC.
+2. Убедиться, что DLC-прототипа нет.
+3. Запустить content summary с DLC.
+4. Убедиться, что DLC-прототип появился.
 
-- No real Steam API.
-- No DRM.
-- No hardcoded DLC content branch.
-
-
-## Глобальные требования, которые нужно соблюдать
-
-- ID только в формате `namespace:path/to/item`, например `base:building/gas_pump`.
-- Manifest/config — TOML.
-- Content/scenarios/patches — RON.
-- Save manifest/diagnostic summaries/replay logs — JSON или NDJSON согласно `docs/02_PROJECT_CONVENTIONS.md`.
-- Crates — `flux_*`.
-- Public types — `PascalCase`, acronyms as `Ui`, `Gpu`, `Cpu`, `Dlc`, `Wasm`.
-- Моды не получают прямой доступ к Bevy World.
-- Клетки мира не являются Bevy entities.
 
 ## Automated checks
 
@@ -48,43 +44,10 @@ cargo test --workspace
 python3 scripts/check_plan_index.py
 ```
 
-## Manual verification
-
-
-1. Run content summary without DLC.
-2. Confirm DLC prototype absent.
-3. Run with DLC enabled.
-4. Confirm DLC prototype present.
-
-
 ## Definition of Done
 
-- Automated checks passed.
-- Manual verification completed.
-- Stage responsibility implemented and documented.
-- No future stage implemented “along the way”.
-- No global convention violated.
-
-## Ожидаемый отчет исполнителя
-
-```text
-Implemented:
-- ...
-
-Manual verification:
-- command: ...
-- expected result: ...
-- actual result: ...
-
-Automated checks:
-- cargo fmt --all --check: pass/fail
-- cargo clippy --workspace --all-targets -- -D warnings: pass/fail
-- cargo test --workspace: pass/fail
-- python3 scripts/check_plan_index.py: pass/fail
-
-Touched files:
-- ...
-
-Known limitations:
-- ...
-```
+- Реализована только зона ответственности этапа.
+- Все automated checks проходят.
+- Выполнена ручная проверка из этого документа.
+- Нет изменений вне зоны ответственности без объяснения.
+- Отчет этапа заполнен по `docs/STAGE_COMPLETION_REPORT_TEMPLATE.md`.
