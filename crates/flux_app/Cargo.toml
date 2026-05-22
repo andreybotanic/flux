@@ -10,4 +10,5 @@ name = "flux_app"
 path = "src/main.rs"
 
 [dependencies]
+bevy = "0.17"
 flux_core.workspace = true
