@@ -1,9 +1,17 @@
 #![forbid(unsafe_code)]
 
+mod error;
+mod id;
+mod version;
+
+pub use error::{IdError, ModIdError, NamespacedIdError, VersionParseError};
+pub use id::{ModId, NamespacedId, PrototypeId};
+pub use version::{ApiVersion, EngineVersion, ModVersion, engine_version};
+
 /// Human-readable engine name used by diagnostics and CLI output.
 pub const ENGINE_NAME: &str = "FluxEngine";
 
-/// Bootstrap version. Real semantic versioning policy is introduced in S02.
+/// Bootstrap version for this binary.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[must_use]
