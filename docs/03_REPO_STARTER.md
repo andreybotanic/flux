@@ -55,6 +55,8 @@ git add .
 git commit -m "Initial FluxEngine starter"
 ./scripts/install_git_hooks.sh
 ./scripts/ci.sh
+# On Windows CMD/PowerShell:
+scripts\ci.cmd
 ```
 
 ## 3. GitHub repository settings
@@ -86,6 +88,7 @@ git commit -m "Initial FluxEngine starter"
 
 ```cmd
 scripts\install_git_hooks.cmd
+scripts\ci.cmd
 ```
 
 или вручную:

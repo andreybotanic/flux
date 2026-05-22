@@ -7,6 +7,9 @@ cargo test --workspace
 
 if command -v python3 >/dev/null 2>&1; then
   python3 scripts/check_plan_index.py
+elif command -v python >/dev/null 2>&1; then
+  python scripts/check_plan_index.py
 else
-  echo "python3 not found; skipping docs/plan_index.json validation"
+  echo "Neither python3 nor python was found; cannot validate docs/plan_index.json" >&2
+  exit 1
 fi

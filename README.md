@@ -29,7 +29,7 @@ git init
 git add .
 git commit -m "Initial FluxEngine starter"
 ./scripts/install_git_hooks.ps1
-bash ./scripts/ci.sh
+./scripts/ci.cmd
 ```
 
 ## Current bootstrap state

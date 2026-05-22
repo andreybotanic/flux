@@ -48,13 +48,17 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 python3 scripts/check_plan_index.py
+# or, on Windows:
+python scripts/check_plan_index.py
 ```
 
 ## Manual verification
 
 
 1. Run `cargo run -p flux_app -- --version`.
-2. Run `./scripts/ci.sh`.
+2. Run CI command for your environment:
+   - Unix/Git Bash: `bash scripts/ci.sh`
+   - Windows CMD/PowerShell: `scripts\ci.cmd`
 3. Confirm docs and hooks exist.
 
 
@@ -81,7 +85,7 @@ Automated checks:
 - cargo fmt --all --check: pass/fail
 - cargo clippy --workspace --all-targets -- -D warnings: pass/fail
 - cargo test --workspace: pass/fail
-- python3 scripts/check_plan_index.py: pass/fail
+- python3 scripts/check_plan_index.py (or python/py -3 on Windows): pass/fail
 
 Touched files:
 - ...
