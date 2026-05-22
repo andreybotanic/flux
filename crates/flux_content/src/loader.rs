@@ -519,26 +519,30 @@ base = "*"
         )
         .expect("write file");
         fs::write(
-            mods_root.join("zeta/content/substances/zeta.ron"),
-            "(id: \"zeta:material/zeta\", display_name: \"zeta.substance.zeta\")",
+            mods_root.join("zeta/content/substances/broken.ron"),
+            "(id: \"zeta:material/zeta\", display_name: )",
         )
         .expect("write file");
         fs::write(
-            mods_root.join("alpha/content/substances/alpha.ron"),
-            "(id: \"alpha:material/alpha\", display_name: \"alpha.substance.alpha\")",
+            mods_root.join("alpha/content/substances/broken.ron"),
+            "(id: \"alpha:material/alpha\", display_name: )",
         )
         .expect("write file");
 
         let report = discover_and_resolve_mods(&mods_root);
         let resolved = report.resolved_order.expect("resolved order");
         let load_report = load_content_registry(&report.valid_mods, &resolved);
-        let registry = load_report.registry.expect("registry");
+        assert!(load_report.registry.is_none());
 
-        let ordered_sources: Vec<&str> = registry
-            .substances()
-            .map(|record| record.source.mod_id.as_str())
+        let ordered_error_mods: Vec<&str> = load_report
+            .errors
+            .iter()
+            .filter_map(|error| match error {
+                ContentRegistryError::FileParse { mod_id, .. } => Some(mod_id.as_ref()),
+                _ => None,
+            })
             .collect();
-        assert_eq!(ordered_sources, vec!["alpha", "base", "zeta"]);
+        assert_eq!(ordered_error_mods, vec!["alpha", "zeta"]);
     }
 
     fn write_manifest(path: &Path, manifest: &str) {
