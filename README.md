@@ -40,3 +40,19 @@ This archive already contains a minimal Rust workspace with two placeholder crat
 - `flux_app`
 
 Stage `S00_REPO_BOOTSTRAP` should verify and adopt this starter state rather than recreate it blindly.
+
+## Windows note
+
+PowerShell may block unsigned `.ps1` scripts. In that case use the CMD installer instead:
+
+```cmd
+scripts\install_git_hooks.cmd
+scripts\ci.cmd
+```
+
+Or install hooks manually:
+
+```cmd
+git config core.hooksPath .githooks
+git config --local --get core.hooksPath
+```

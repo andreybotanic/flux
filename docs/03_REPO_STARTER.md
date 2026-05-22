@@ -79,3 +79,24 @@ git commit -m "Initial FluxEngine starter"
 - создавать `base` mod.
 
 Это делается строго по stage-документам.
+
+## Windows / PowerShell execution policy
+
+Если PowerShell блокирует `scripts/install_git_hooks.ps1` из-за отсутствия цифровой подписи, не меняй системную execution policy. Используй один из вариантов:
+
+```cmd
+scripts\install_git_hooks.cmd
+```
+
+или вручную:
+
+```cmd
+git config core.hooksPath .githooks
+git config --local --get core.hooksPath
+```
+
+Разовый обход PowerShell policy тоже допустим, но не обязателен:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_git_hooks.ps1
+```
