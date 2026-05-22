@@ -1,0 +1,425 @@
+{
+  "format_version": 3,
+  "project": "FluxEngine Rewrite Plan",
+  "fixed_requirements": {
+    "id_format": "namespace:path/to/item",
+    "id_examples": [
+      "base:material/oxygen",
+      "base:building/gas_pump",
+      "base:ui/main_menu",
+      "example_mod:scenario/bootstrap_smoke"
+    ],
+    "data_formats": {
+      "mod_manifest": "TOML",
+      "project_runtime_config": "TOML",
+      "content_prototypes": "RON",
+      "content_patches": "RON",
+      "scenario_definitions": "RON",
+      "save_manifest": "JSON",
+      "save_payload_chunks": "binary",
+      "command_replay_log": "JSON or NDJSON",
+      "diagnostic_summaries": "JSON",
+      "screenshots": "PNG"
+    },
+    "naming_conventions": {
+      "crates": "snake_case with flux_ prefix, e.g. flux_core",
+      "ids": "lower_snake_case namespace and lower_snake_case slash-separated path",
+      "public_types": "PascalCase; use Ui/Gpu/Cpu/Dlc/Wasm acronym casing"
+    }
+  },
+  "docs": [
+    "AGENTS.md",
+    "docs/00_OVERVIEW.md",
+    "docs/01_ROADMAP_DAG.md",
+    "docs/02_PROJECT_CONVENTIONS.md",
+    "docs/03_REPO_STARTER.md"
+  ],
+  "graph": {
+    "topological_order": [
+      "S00",
+      "S01",
+      "S02",
+      "S03",
+      "S04",
+      "S05",
+      "S06",
+      "S07",
+      "S08",
+      "S09",
+      "S10",
+      "S11",
+      "S12",
+      "S13",
+      "S14",
+      "S15",
+      "S16",
+      "S17",
+      "S18",
+      "S19"
+    ],
+    "dependency_edges": [
+      {
+        "from": "S00",
+        "to": "S01"
+      },
+      {
+        "from": "S00",
+        "to": "S02"
+      },
+      {
+        "from": "S02",
+        "to": "S03"
+      },
+      {
+        "from": "S03",
+        "to": "S04"
+      },
+      {
+        "from": "S03",
+        "to": "S05"
+      },
+      {
+        "from": "S05",
+        "to": "S06"
+      },
+      {
+        "from": "S06",
+        "to": "S07"
+      },
+      {
+        "from": "S05",
+        "to": "S08"
+      },
+      {
+        "from": "S04",
+        "to": "S09"
+      },
+      {
+        "from": "S08",
+        "to": "S09"
+      },
+      {
+        "from": "S02",
+        "to": "S10"
+      },
+      {
+        "from": "S10",
+        "to": "S11"
+      },
+      {
+        "from": "S11",
+        "to": "S12"
+      },
+      {
+        "from": "S10",
+        "to": "S13"
+      },
+      {
+        "from": "S01",
+        "to": "S13"
+      },
+      {
+        "from": "S11",
+        "to": "S14"
+      },
+      {
+        "from": "S14",
+        "to": "S15"
+      },
+      {
+        "from": "S03",
+        "to": "S16"
+      },
+      {
+        "from": "S11",
+        "to": "S17"
+      },
+      {
+        "from": "S03",
+        "to": "S18"
+      },
+      {
+        "from": "S05",
+        "to": "S18"
+      },
+      {
+        "from": "S06",
+        "to": "S18"
+      },
+      {
+        "from": "S07",
+        "to": "S19"
+      },
+      {
+        "from": "S09",
+        "to": "S19"
+      },
+      {
+        "from": "S12",
+        "to": "S19"
+      },
+      {
+        "from": "S13",
+        "to": "S19"
+      },
+      {
+        "from": "S15",
+        "to": "S19"
+      }
+    ]
+  },
+  "stages": [
+    {
+      "id": "S00",
+      "title": "Bootstrap workspace",
+      "file": "docs/stages/S00_REPO_BOOTSTRAP.md",
+      "depends_on": [],
+      "parallel_with": [],
+      "goal": "Проверить и зафиксировать стартовый workspace, CI, hooks и документацию."
+    },
+    {
+      "id": "S01",
+      "title": "Bevy app shell + diagnostics",
+      "file": "docs/stages/S01_APP_SHELL.md",
+      "depends_on": [
+        "S00"
+      ],
+      "parallel_with": [
+        "S02"
+      ],
+      "goal": "Создать минимальную Bevy-оболочку приложения с диагностическим режимом запуска."
+    },
+    {
+      "id": "S02",
+      "title": "Core IDs, versions, errors",
+      "file": "docs/stages/S02_CORE_TYPES.md",
+      "depends_on": [
+        "S00"
+      ],
+      "parallel_with": [
+        "S01"
+      ],
+      "goal": "Создать базовые типы ID, версий и ошибок для последующих crates."
+    },
+    {
+      "id": "S03",
+      "title": "Mod manifest discovery/validation",
+      "file": "docs/stages/S03_MOD_MANIFEST_LOADER.md",
+      "depends_on": [
+        "S02"
+      ],
+      "parallel_with": [
+        "S10"
+      ],
+      "goal": "Научить проект находить моды и валидировать их TOML-манифесты без загрузки контента."
+    },
+    {
+      "id": "S04",
+      "title": "Declarative scenario DSL MVP",
+      "file": "docs/stages/S04_SCENARIO_DSL_MVP.md",
+      "depends_on": [
+        "S03"
+      ],
+      "parallel_with": [
+        "S05"
+      ],
+      "goal": "Добавить минимальный RON-формат сценариев как модового контента, пока без UI и без мира."
+    },
+    {
+      "id": "S05",
+      "title": "Content registry MVP",
+      "file": "docs/stages/S05_CONTENT_REGISTRY_MVP.md",
+      "depends_on": [
+        "S03"
+      ],
+      "parallel_with": [
+        "S04"
+      ],
+      "goal": "Добавить минимальный RON content registry с загрузкой прототипов без игровой симуляции."
+    },
+    {
+      "id": "S06",
+      "title": "base mod MVP",
+      "file": "docs/stages/S06_BASE_MOD_MVP.md",
+      "depends_on": [
+        "S05"
+      ],
+      "parallel_with": [
+        "S08"
+      ],
+      "goal": "Сделать базовую игру обычным модом `base` с минимальным контентом."
+    },
+    {
+      "id": "S07",
+      "title": "External test mod + patching",
+      "file": "docs/stages/S07_EXTERNAL_TEST_MOD.md",
+      "depends_on": [
+        "S06"
+      ],
+      "parallel_with": [
+        "S10",
+        "S11"
+      ],
+      "goal": "Проверить, что внешний мод может добавить контент и пропатчить контент `base`."
+    },
+    {
+      "id": "S08",
+      "title": "UI registry MVP",
+      "file": "docs/stages/S08_UI_REGISTRY_MVP.md",
+      "depends_on": [
+        "S05"
+      ],
+      "parallel_with": [
+        "S06"
+      ],
+      "goal": "Создать декларативный UI registry и первые extension points без сложного UI."
+    },
+    {
+      "id": "S09",
+      "title": "Scenario runner with UI, screenshot and diagnostic logs",
+      "file": "docs/stages/S09_SCENARIO_RUNNER_UI_SCREENSHOT.md",
+      "depends_on": [
+        "S04",
+        "S08"
+      ],
+      "parallel_with": [
+        "S10",
+        "S11"
+      ],
+      "goal": "Расширить сценарии до уровня базовой UI-автоматизации, скриншотов и диагностических логов."
+    },
+    {
+      "id": "S10",
+      "title": "WorldGrid SoA + chunk metadata",
+      "file": "docs/stages/S10_WORLD_GRID_CHUNK_META.md",
+      "depends_on": [
+        "S02"
+      ],
+      "parallel_with": [
+        "S03",
+        "S04",
+        "S05"
+      ],
+      "goal": "Создать модель мира в плотных массивах с chunk metadata, но без физической симуляции."
+    },
+    {
+      "id": "S11",
+      "title": "Fixed tick + command/event loop",
+      "file": "docs/stages/S11_FIXED_TICK_AND_COMMANDS.md",
+      "depends_on": [
+        "S10"
+      ],
+      "parallel_with": [
+        "S08"
+      ],
+      "goal": "Добавить фиксированный тик симуляции и базовый command/event pipeline."
+    },
+    {
+      "id": "S12",
+      "title": "Save/load MVP",
+      "file": "docs/stages/S12_SAVE_LOAD_MVP.md",
+      "depends_on": [
+        "S11"
+      ],
+      "parallel_with": [
+        "S13",
+        "S14"
+      ],
+      "goal": "Добавить минимальное сохранение и загрузку мира с manifest активных модов."
+    },
+    {
+      "id": "S13",
+      "title": "Chunk-based render dirty MVP",
+      "file": "docs/stages/S13_RENDER_CHUNK_DIRTY_MVP.md",
+      "depends_on": [
+        "S10",
+        "S01"
+      ],
+      "parallel_with": [
+        "S12",
+        "S14"
+      ],
+      "goal": "Добавить минимальный рендер мира, где обновления визуала привязаны к dirty chunks."
+    },
+    {
+      "id": "S14",
+      "title": "CPU toy simulation",
+      "file": "docs/stages/S14_CPU_SIM_TOY.md",
+      "depends_on": [
+        "S11"
+      ],
+      "parallel_with": [
+        "S12",
+        "S13"
+      ],
+      "goal": "Добавить первую простую CPU-симуляцию, чтобы проверить fixed tick и структуру мира."
+    },
+    {
+      "id": "S15",
+      "title": "Replay/determinism harness",
+      "file": "docs/stages/S15_REPLAY_DETERMINISM.md",
+      "depends_on": [
+        "S14"
+      ],
+      "parallel_with": [
+        "S16"
+      ],
+      "goal": "Добавить replay harness, command log и проверку воспроизводимости результата."
+    },
+    {
+      "id": "S16",
+      "title": "WASM plugin spike",
+      "file": "docs/stages/S16_WASM_PLUGIN_SPIKE.md",
+      "depends_on": [
+        "S03"
+      ],
+      "parallel_with": [
+        "S15",
+        "S17"
+      ],
+      "goal": "Проверить runtime-плагины через WASM на минимальном событии/команде."
+    },
+    {
+      "id": "S17",
+      "title": "GPU backend contract + compute spike",
+      "file": "docs/stages/S17_GPU_BACKEND_SPIKE.md",
+      "depends_on": [
+        "S11"
+      ],
+      "parallel_with": [
+        "S16"
+      ],
+      "goal": "Добавить контракт simulation backend и экспериментальный GPU compute spike на простой операции."
+    },
+    {
+      "id": "S18",
+      "title": "DLC as official mod proof",
+      "file": "docs/stages/S18_DLC_AS_MOD_PROOF.md",
+      "depends_on": [
+        "S03",
+        "S05",
+        "S06"
+      ],
+      "parallel_with": [
+        "S10",
+        "S11",
+        "S13"
+      ],
+      "goal": "Доказать, что DLC является обычным официальным модом, а не отдельной hardcode-системой."
+    },
+    {
+      "id": "S19",
+      "title": "Integration vertical slice",
+      "file": "docs/stages/S19_INTEGRATION_VERTICAL_SLICE.md",
+      "depends_on": [
+        "S07",
+        "S09",
+        "S12",
+        "S13",
+        "S15"
+      ],
+      "parallel_with": [],
+      "goal": "Собрать первый вертикальный срез платформы: моды, контент, UI, мир, сценарий, скриншот, сохранение, replay."
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+[alias]
+ci-test = "test --workspace"
+
+[term]
+color = "auto"

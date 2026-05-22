@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/flux_core",
+    "crates/flux_app",
+]
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+authors = ["FluxEngine developers"]
+
+[workspace.dependencies]
+flux_core = { path = "crates/flux_core" }
+
+[profile.dev]
+debug = true
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

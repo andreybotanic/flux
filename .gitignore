@@ -1,0 +1,22 @@
+# Rust build output
+/target/
+
+# Scenario/runtime artifacts
+/saves/
+/logs/
+/screenshots/
+/replays/
+/tmp/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# JetBrains/VS Code user-local files
+.idea/
+.vscode/
+
+# Keep Cargo.lock tracked for this binary/game workspace.
+# Do not add Cargo.lock here.
