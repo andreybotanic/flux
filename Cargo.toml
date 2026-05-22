@@ -4,6 +4,7 @@ members = [
     "crates/flux_core",
     "crates/flux_app",
     "crates/flux_mod_loader",
+    "crates/flux_content",
 ]
 
 [workspace.package]
@@ -14,6 +15,7 @@ authors = ["FluxEngine developers"]
 [workspace.dependencies]
 flux_core = { path = "crates/flux_core" }
 flux_mod_loader = { path = "crates/flux_mod_loader" }
+flux_content = { path = "crates/flux_content" }
 
 [profile.dev]
 debug = true

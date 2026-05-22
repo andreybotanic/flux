@@ -14,6 +14,7 @@ use flux_mod_loader::DiscoveredMod;
 enum RunMode {
     Version,
     ListMods,
+    ListContent,
     Windowed,
     Headless,
 }
@@ -42,6 +43,10 @@ fn main() {
             let exit_code = run_list_mods();
             std::process::exit(exit_code);
         }
+        RunMode::ListContent => {
+            let exit_code = run_list_content();
+            std::process::exit(exit_code);
+        }
         RunMode::Windowed => run_windowed(),
         RunMode::Headless => run_headless(),
     }
@@ -54,18 +59,22 @@ where
     let mut wants_version = false;
     let mut wants_headless = false;
     let mut wants_list_mods = false;
+    let mut wants_list_content = false;
 
     for arg in args {
         match arg {
             "--version" | "-V" => wants_version = true,
             "--headless" => wants_headless = true,
             "--list-mods" => wants_list_mods = true,
+            "--list-content" => wants_list_content = true,
             other => return Err(CliError::UnknownArgument(other.to_owned())),
         }
     }
 
-    let selected_modes =
-        usize::from(wants_version) + usize::from(wants_headless) + usize::from(wants_list_mods);
+    let selected_modes = usize::from(wants_version)
+        + usize::from(wants_headless)
+        + usize::from(wants_list_mods)
+        + usize::from(wants_list_content);
 
     if selected_modes > 1 {
         return Err(CliError::ConflictingArguments);
@@ -77,6 +86,10 @@ where
 
     if wants_list_mods {
         return Ok(RunMode::ListMods);
+    }
+
+    if wants_list_content {
+        return Ok(RunMode::ListContent);
     }
 
     if wants_headless {
@@ -177,6 +190,68 @@ fn run_list_mods() -> i32 {
     0
 }
 
+fn run_list_content() -> i32 {
+    let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
+
+    if !report.errors.is_empty() {
+        eprintln!("errors: {}", report.errors.len());
+        for error in &report.errors {
+            eprintln!("{error}");
+        }
+        return 1;
+    }
+
+    let resolved_order = report
+        .resolved_order
+        .as_ref()
+        .expect("resolved order must exist when there are no mod errors");
+
+    let content_report = flux_content::load_content_registry(&report.valid_mods, resolved_order);
+    if !content_report.errors.is_empty() {
+        eprintln!("errors: {}", content_report.errors.len());
+        for error in &content_report.errors {
+            eprintln!("{error}");
+        }
+        return 1;
+    }
+
+    let registry = content_report
+        .registry
+        .expect("content registry must exist when there are no content errors");
+
+    println!(
+        "content summary: substances={} structures={}",
+        registry.substances_len(),
+        registry.structures_len()
+    );
+
+    println!("substances:");
+    for record in registry.substances() {
+        println!(
+            "- id={} display_name={} source_mod={} source_file={}",
+            record.prototype.id,
+            record.prototype.display_name,
+            record.source.mod_id,
+            record.source.file
+        );
+    }
+
+    println!("structures:");
+    for record in registry.structures() {
+        println!(
+            "- id={} display_name={} size={}x{} source_mod={} source_file={}",
+            record.prototype.id,
+            record.prototype.display_name,
+            record.prototype.size.width,
+            record.prototype.size.height,
+            record.source.mod_id,
+            record.source.file
+        );
+    }
+
+    0
+}
+
 fn print_discovered_mod(module: &DiscoveredMod) {
     println!(
         "- id={} version={} api_version={} path={}",
@@ -193,13 +268,13 @@ impl std::fmt::Display for CliError {
             CliError::UnknownArgument(argument) => {
                 write!(
                     f,
-                    "unknown argument: {argument}. Supported args: --version, -V, --headless, --list-mods"
+                    "unknown argument: {argument}. Supported args: --version, -V, --headless, --list-mods, --list-content"
                 )
             }
             CliError::ConflictingArguments => {
                 write!(
                     f,
-                    "arguments --version, --headless, and --list-mods are mutually exclusive"
+                    "arguments --version, --headless, --list-mods, and --list-content are mutually exclusive"
                 )
             }
         }
@@ -239,6 +314,14 @@ mod tests {
     }
 
     #[test]
+    fn parses_list_content_flag() {
+        assert_eq!(
+            parse_run_mode(["--list-content"].as_slice().iter().copied()),
+            Ok(RunMode::ListContent)
+        );
+    }
+
+    #[test]
     fn defaults_to_windowed_mode() {
         assert_eq!(parse_run_mode(std::iter::empty()), Ok(RunMode::Windowed));
     }
@@ -263,6 +346,10 @@ mod tests {
         );
         assert_eq!(
             parse_run_mode(["--version", "--list-mods"].as_slice().iter().copied()),
+            Err(CliError::ConflictingArguments)
+        );
+        assert_eq!(
+            parse_run_mode(["--list-content", "--headless"].as_slice().iter().copied()),
             Err(CliError::ConflictingArguments)
         );
     }
