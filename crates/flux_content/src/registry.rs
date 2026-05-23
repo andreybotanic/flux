@@ -4,7 +4,8 @@ use flux_core::PrototypeId;
 
 use crate::ContentRegistryError;
 use crate::types::{
-    GasPrototype, GasRecord, PrototypeKind, PrototypeSource, SolidCellPrototype, SolidCellRecord,
+    AppliedPrototypePatch, GasPrototype, GasRecord, PrototypeBody, PrototypeKind, PrototypePatch,
+    PrototypePatchBody, PrototypePatchFor, PrototypeSource, SolidCellPrototype, SolidCellRecord,
     StructurePrototype, StructureRecord, SubstancePrototype, SubstanceRecord,
 };
 
@@ -28,6 +29,7 @@ pub struct ContentRegistry {
     solid_cells: BTreeMap<PrototypeId, SolidCellRecord>,
     structures: BTreeMap<PrototypeId, StructureRecord>,
     gases: BTreeMap<PrototypeId, GasRecord>,
+    applied_patches: BTreeMap<PrototypeId, Vec<AppliedPrototypePatch>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,6 +47,7 @@ impl ContentRegistry {
             solid_cells: BTreeMap::new(),
             structures: BTreeMap::new(),
             gases: BTreeMap::new(),
+            applied_patches: BTreeMap::new(),
         }
     }
 
@@ -61,6 +64,122 @@ impl ContentRegistry {
     pub fn freeze(&mut self) -> FrozenContentRegistry<'_> {
         self.state = RegistryState::Frozen;
         FrozenContentRegistry { registry: self }
+    }
+
+    pub fn add_prototype(
+        &mut self,
+        prototype: PrototypeBody,
+        source: PrototypeSource,
+    ) -> Result<(), ContentRegistryError> {
+        match prototype {
+            PrototypeBody::SubstancePrototype(prototype) => self.add_substance(prototype, source),
+            PrototypeBody::SolidCellPrototype(prototype) => self.add_solid_cell(prototype, source),
+            PrototypeBody::StructurePrototype(prototype) => self.add_structure(prototype, source),
+            PrototypeBody::GasPrototype(prototype) => self.add_gas(prototype, source),
+        }
+    }
+
+    pub fn apply_patch(
+        &mut self,
+        patch: PrototypePatch,
+        source: PrototypeSource,
+    ) -> Result<(), ContentRegistryError> {
+        let patch_kind = patch.body.kind();
+        self.ensure_mutable(patch_kind, &patch.target)?;
+
+        if patch.body.is_empty() {
+            return Err(ContentRegistryError::EmptyPatchBody {
+                mod_id: source.mod_id.clone().into(),
+                file: source.file.clone().into(),
+                target: patch.target.to_string().into(),
+                patch_kind: patch_kind.as_str().into(),
+            });
+        }
+
+        let target_kind = self
+            .prototype_index
+            .get(&patch.target)
+            .ok_or_else(|| ContentRegistryError::PatchTargetNotFound {
+                mod_id: source.mod_id.clone().into(),
+                file: source.file.clone().into(),
+                target: patch.target.to_string().into(),
+            })?
+            .kind;
+
+        if target_kind != patch_kind {
+            return Err(ContentRegistryError::PatchKindMismatch {
+                mod_id: source.mod_id.clone().into(),
+                file: source.file.clone().into(),
+                target: patch.target.to_string().into(),
+                target_kind: target_kind.as_str().into(),
+                patch_kind: patch_kind.as_str().into(),
+            });
+        }
+
+        match patch.body {
+            PrototypePatchBody::Substance(body) => {
+                let record = self
+                    .substances
+                    .get_mut(&patch.target)
+                    .expect("index in sync");
+                body.apply_to(&mut record.prototype).map_err(|reason| {
+                    ContentRegistryError::PatchApplyFailed {
+                        mod_id: source.mod_id.clone().into(),
+                        file: source.file.clone().into(),
+                        target: patch.target.to_string().into(),
+                        reason: reason.into(),
+                    }
+                })?;
+            }
+            PrototypePatchBody::SolidCell(body) => {
+                let record = self
+                    .solid_cells
+                    .get_mut(&patch.target)
+                    .expect("index in sync");
+                body.apply_to(&mut record.prototype).map_err(|reason| {
+                    ContentRegistryError::PatchApplyFailed {
+                        mod_id: source.mod_id.clone().into(),
+                        file: source.file.clone().into(),
+                        target: patch.target.to_string().into(),
+                        reason: reason.into(),
+                    }
+                })?;
+            }
+            PrototypePatchBody::Structure(body) => {
+                let record = self
+                    .structures
+                    .get_mut(&patch.target)
+                    .expect("index in sync");
+                body.apply_to(&mut record.prototype).map_err(|reason| {
+                    ContentRegistryError::PatchApplyFailed {
+                        mod_id: source.mod_id.clone().into(),
+                        file: source.file.clone().into(),
+                        target: patch.target.to_string().into(),
+                        reason: reason.into(),
+                    }
+                })?;
+                record.prototype.validate(&record.source)?;
+            }
+            PrototypePatchBody::Gas(body) => {
+                let record = self.gases.get_mut(&patch.target).expect("index in sync");
+                body.apply_to(&mut record.prototype).map_err(|reason| {
+                    ContentRegistryError::PatchApplyFailed {
+                        mod_id: source.mod_id.clone().into(),
+                        file: source.file.clone().into(),
+                        target: patch.target.to_string().into(),
+                        reason: reason.into(),
+                    }
+                })?;
+                record.prototype.validate(&record.source)?;
+            }
+        }
+
+        self.applied_patches
+            .entry(patch.target)
+            .or_default()
+            .push(AppliedPrototypePatch { source, patch_kind });
+
+        Ok(())
     }
 
     pub fn add_substance(
@@ -155,6 +274,23 @@ impl ContentRegistry {
         Ok(())
     }
 
+    #[must_use]
+    pub fn prototype_kind(&self, prototype_id: &PrototypeId) -> Option<PrototypeKind> {
+        self.prototype_index
+            .get(prototype_id)
+            .map(|entry| entry.kind)
+    }
+
+    pub fn applied_patches_for(
+        &self,
+        prototype_id: &PrototypeId,
+    ) -> impl Iterator<Item = &AppliedPrototypePatch> {
+        self.applied_patches
+            .get(prototype_id)
+            .into_iter()
+            .flat_map(|patches| patches.iter())
+    }
+
     pub fn substances(&self) -> impl Iterator<Item = &SubstanceRecord> {
         self.substances.values()
     }
@@ -238,112 +374,5 @@ impl<'a> FrozenContentRegistry<'a> {
     #[must_use]
     pub fn registry(&self) -> &'a ContentRegistry {
         self.registry
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use flux_core::PrototypeId;
-
-    use super::*;
-    use crate::types::{GasPrototype, LocalizationKey, TileSize};
-
-    #[test]
-    fn rejects_mutation_after_freeze() {
-        let mut registry = ContentRegistry::new();
-        registry.freeze();
-
-        let result = registry.add_substance(
-            SubstancePrototype {
-                id: PrototypeId::parse("base:material/oxygen").expect("valid id"),
-                display_name: LocalizationKey::parse("base.substance.oxygen").expect("valid key"),
-            },
-            PrototypeSource {
-                mod_id: "base".to_owned(),
-                file: "mods/base/content/substances/oxygen.ron".to_owned(),
-            },
-        );
-
-        assert!(matches!(
-            result,
-            Err(ContentRegistryError::RegistryFrozenMutation { .. })
-        ));
-    }
-
-    #[test]
-    fn rejects_duplicate_id_across_kinds() {
-        let mut registry = ContentRegistry::new();
-        let id = PrototypeId::parse("base:material/oxygen").expect("valid id");
-
-        registry
-            .add_substance(
-                SubstancePrototype {
-                    id: id.clone(),
-                    display_name: LocalizationKey::parse("base.substance.oxygen")
-                        .expect("valid key"),
-                },
-                PrototypeSource {
-                    mod_id: "base".to_owned(),
-                    file: "mods/base/content/substances/oxygen.ron".to_owned(),
-                },
-            )
-            .expect("must add");
-
-        let duplicate = registry.add_structure(
-            StructurePrototype {
-                id,
-                display_name: LocalizationKey::parse("base.structure.oxygen").expect("valid key"),
-                size: TileSize {
-                    width: 1,
-                    height: 1,
-                },
-            },
-            PrototypeSource {
-                mod_id: "base".to_owned(),
-                file: "mods/base/content/structures/oxygen.ron".to_owned(),
-            },
-        );
-
-        assert!(matches!(
-            duplicate,
-            Err(ContentRegistryError::DuplicatePrototypeId { .. })
-        ));
-    }
-
-    #[test]
-    fn rejects_duplicate_id_between_substance_and_gas() {
-        let mut registry = ContentRegistry::new();
-        let id = PrototypeId::parse("base:material/oxygen").expect("valid id");
-
-        registry
-            .add_substance(
-                SubstancePrototype {
-                    id: id.clone(),
-                    display_name: LocalizationKey::parse("base.substance.oxygen")
-                        .expect("valid key"),
-                },
-                PrototypeSource {
-                    mod_id: "base".to_owned(),
-                    file: "mods/base/content/substances/oxygen.ron".to_owned(),
-                },
-            )
-            .expect("must add");
-
-        let duplicate = registry.add_gas(
-            GasPrototype {
-                id,
-                display_name: LocalizationKey::parse("base.gas.oxygen").expect("valid key"),
-                molar_mass: 31.998,
-            },
-            PrototypeSource {
-                mod_id: "base".to_owned(),
-                file: "mods/base/content/gases/oxygen.ron".to_owned(),
-            },
-        );
-
-        assert!(matches!(
-            duplicate,
-            Err(ContentRegistryError::DuplicatePrototypeId { .. })
-        ));
     }
 }

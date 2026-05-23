@@ -1,1 +1,1 @@
-(id: "base:substance/granite", display_name: "base.substance.granite")
+SubstancePrototype(id: "base:substance/granite", display_name: "base.substance.granite")

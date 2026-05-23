@@ -1,1 +1,1 @@
-(id: "base:building/gas_pipe", display_name: "base.structure.gas_pipe", size: (width: 1, height: 1))
+StructurePrototype(id: "base:building/gas_pipe", display_name: "base.structure.gas_pipe", size: (width: 1, height: 1))

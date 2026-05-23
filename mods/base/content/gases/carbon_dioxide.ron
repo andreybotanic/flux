@@ -1,1 +1,1 @@
-(id: "base:gas/carbon_dioxide", display_name: "base.gas.carbon_dioxide", molar_mass: 44.01)
+GasPrototype(id: "base:gas/carbon_dioxide", display_name: "base.gas.carbon_dioxide", molar_mass: 44.01)

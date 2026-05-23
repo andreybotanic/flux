@@ -237,6 +237,7 @@ fn run_list_content() -> i32 {
             record.source.mod_id,
             record.source.file
         );
+        print_patch_trail(&registry, &record.prototype.id);
     }
 
     println!("substances:");
@@ -248,6 +249,7 @@ fn run_list_content() -> i32 {
             record.source.mod_id,
             record.source.file
         );
+        print_patch_trail(&registry, &record.prototype.id);
     }
 
     println!("structures:");
@@ -261,6 +263,7 @@ fn run_list_content() -> i32 {
             record.source.mod_id,
             record.source.file
         );
+        print_patch_trail(&registry, &record.prototype.id);
     }
 
     println!("gases:");
@@ -273,9 +276,32 @@ fn run_list_content() -> i32 {
             record.source.mod_id,
             record.source.file
         );
+        print_patch_trail(&registry, &record.prototype.id);
     }
 
     0
+}
+
+fn print_patch_trail(
+    registry: &flux_content::ContentRegistry,
+    prototype_id: &flux_core::PrototypeId,
+) {
+    let patches = registry
+        .applied_patches_for(prototype_id)
+        .collect::<Vec<_>>();
+    if patches.is_empty() {
+        return;
+    }
+
+    println!("  patches:");
+    for patch in patches {
+        println!(
+            "  - kind={} source_mod={} source_file={}",
+            patch.patch_kind.as_str(),
+            patch.source.mod_id,
+            patch.source.file
+        );
+    }
 }
 
 fn print_discovered_mod(module: &DiscoveredMod) {

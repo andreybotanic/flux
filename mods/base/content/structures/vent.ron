@@ -1,1 +1,1 @@
-(id: "base:building/vent", display_name: "base.structure.vent", size: (width: 1, height: 1))
+StructurePrototype(id: "base:building/vent", display_name: "base.structure.vent", size: (width: 1, height: 1))

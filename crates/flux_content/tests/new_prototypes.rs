@@ -21,7 +21,7 @@ api_version = "0.1.0"
     );
     fs::write(
         mods_root.join("base/content/gases/broken.ron"),
-        "(id: \"base:gas/oxygen\", display_name: )",
+        "GasPrototype(id: \"base:gas/oxygen\", display_name: )",
     )
     .expect("write file");
 
@@ -57,7 +57,7 @@ api_version = "0.1.0"
     );
     fs::write(
         mods_root.join("base/content/solid_cells/floor_cell.ron"),
-        "(id: \"other:solid_cell/floor_cell\", display_name: \"base.solid_cell.floor_cell\", gas_permeable: false)",
+        "SolidCellPrototype(id: \"other:solid_cell/floor_cell\", display_name: \"base.solid_cell.floor_cell\", gas_permeable: false)",
     )
     .expect("write file");
 
@@ -93,7 +93,7 @@ api_version = "0.1.0"
     );
     fs::write(
         mods_root.join("base/content/gases/oxygen.ron"),
-        "(id: \"base:gas/oxygen\", display_name: \"base.gas.oxygen\", molar_mass: 31.998)",
+        "GasPrototype(id: \"base:gas/oxygen\", display_name: \"base.gas.oxygen\", molar_mass: 31.998)",
     )
     .expect("write file");
 
@@ -122,7 +122,7 @@ api_version = "0.1.0"
     );
     fs::write(
         mods_root.join("base/content/gases/invalid.ron"),
-        "(id: \"base:gas/oxygen\", display_name: \"base.gas.oxygen\", molar_mass: 0.0)",
+        "GasPrototype(id: \"base:gas/oxygen\", display_name: \"base.gas.oxygen\", molar_mass: 0.0)",
     )
     .expect("write file");
 

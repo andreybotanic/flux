@@ -1,1 +1,1 @@
-(id: "base:building/gas_pump", display_name: "base.structure.gas_pump", size: (width: 2, height: 1))
+StructurePrototype(id: "base:building/gas_pump", display_name: "base.structure.gas_pump", size: (width: 2, height: 1))

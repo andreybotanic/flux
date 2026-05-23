@@ -7,6 +7,20 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::ContentRegistryError;
 
+pub type PatchResult = Result<(), String>;
+
+pub trait Prototype: Sized {
+    type Patch: PrototypePatchFor<Self>;
+
+    const KIND: PrototypeKind;
+}
+
+pub trait PrototypePatchFor<P: Prototype> {
+    fn is_empty(&self) -> bool;
+
+    fn apply_to(self, target: &mut P) -> PatchResult;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalizationKey(String);
 
@@ -126,24 +140,238 @@ pub struct StructurePrototype {
     pub size: TileSize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PrototypeKind {
-    Substance,
-    SolidCell,
-    Structure,
-    Gas,
+impl StructurePrototype {
+    pub fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
+        self.size.validate(&self.id, source)
+    }
 }
 
-impl PrototypeKind {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Substance => "substance",
-            Self::SolidCell => "solid_cell",
-            Self::Structure => "structure",
-            Self::Gas => "gas",
+impl GasPrototype {
+    pub fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
+        if self.molar_mass.is_finite() && self.molar_mass > 0.0 {
+            return Ok(());
         }
+
+        Err(ContentRegistryError::InvalidPrototypeField {
+            mod_id: source.mod_id.clone().into(),
+            file: source.file.clone().into(),
+            prototype_id: self.id.to_string().into(),
+            field: "molar_mass".into(),
+            reason: format!(
+                "molar_mass must be finite and greater than zero, got {}",
+                self.molar_mass
+            )
+            .into(),
+        })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubstancePrototypePatch {
+    #[serde(default)]
+    pub display_name: Option<LocalizationKey>,
+}
+
+impl PrototypePatchFor<SubstancePrototype> for SubstancePrototypePatch {
+    fn is_empty(&self) -> bool {
+        self.display_name.is_none()
+    }
+
+    fn apply_to(self, target: &mut SubstancePrototype) -> PatchResult {
+        if let Some(display_name) = self.display_name {
+            target.display_name = display_name;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SolidCellPrototypePatch {
+    #[serde(default)]
+    pub display_name: Option<LocalizationKey>,
+    #[serde(default)]
+    pub gas_permeable: Option<bool>,
+}
+
+impl PrototypePatchFor<SolidCellPrototype> for SolidCellPrototypePatch {
+    fn is_empty(&self) -> bool {
+        self.display_name.is_none() && self.gas_permeable.is_none()
+    }
+
+    fn apply_to(self, target: &mut SolidCellPrototype) -> PatchResult {
+        if let Some(display_name) = self.display_name {
+            target.display_name = display_name;
+        }
+        if let Some(gas_permeable) = self.gas_permeable {
+            target.gas_permeable = gas_permeable;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StructurePrototypePatch {
+    #[serde(default)]
+    pub display_name: Option<LocalizationKey>,
+    #[serde(default)]
+    pub size: Option<TileSize>,
+}
+
+impl PrototypePatchFor<StructurePrototype> for StructurePrototypePatch {
+    fn is_empty(&self) -> bool {
+        self.display_name.is_none() && self.size.is_none()
+    }
+
+    fn apply_to(self, target: &mut StructurePrototype) -> PatchResult {
+        if let Some(display_name) = self.display_name {
+            target.display_name = display_name;
+        }
+        if let Some(size) = self.size {
+            target.size = size;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GasPrototypePatch {
+    #[serde(default)]
+    pub display_name: Option<LocalizationKey>,
+    #[serde(default)]
+    pub molar_mass: Option<f32>,
+}
+
+impl PrototypePatchFor<GasPrototype> for GasPrototypePatch {
+    fn is_empty(&self) -> bool {
+        self.display_name.is_none() && self.molar_mass.is_none()
+    }
+
+    fn apply_to(self, target: &mut GasPrototype) -> PatchResult {
+        if let Some(display_name) = self.display_name {
+            target.display_name = display_name;
+        }
+        if let Some(molar_mass) = self.molar_mass {
+            target.molar_mass = molar_mass;
+        }
+        Ok(())
+    }
+}
+
+macro_rules! define_prototype_kinds {
+    ($(
+        $kind_variant:ident => (
+            kind_str: $kind_str:literal,
+            prototype: $prototype_ty:ty,
+            prototype_body: $prototype_body_variant:ident,
+            patch: $patch_ty:ty,
+            patch_body: $patch_body_variant:ident
+        )
+    ),+ $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum PrototypeKind {
+            $($kind_variant),+
+        }
+
+        impl PrototypeKind {
+            #[must_use]
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$kind_variant => $kind_str),+
+                }
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq)]
+        pub enum PrototypeBody {
+            $($prototype_body_variant($prototype_ty)),+
+        }
+
+        impl PrototypeBody {
+            #[must_use]
+            pub fn kind(&self) -> PrototypeKind {
+                match self {
+                    $(Self::$prototype_body_variant(_) => PrototypeKind::$kind_variant),+
+                }
+            }
+
+            #[must_use]
+            pub fn id(&self) -> &PrototypeId {
+                match self {
+                    $(Self::$prototype_body_variant(prototype) => &prototype.id),+
+                }
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq)]
+        pub enum PrototypePatchBody {
+            $($patch_body_variant($patch_ty)),+
+        }
+
+        impl PrototypePatchBody {
+            #[must_use]
+            pub fn kind(&self) -> PrototypeKind {
+                match self {
+                    $(Self::$patch_body_variant(_) => PrototypeKind::$kind_variant),+
+                }
+            }
+
+            #[must_use]
+            pub fn is_empty(&self) -> bool {
+                match self {
+                    $(Self::$patch_body_variant(body) => body.is_empty()),+
+                }
+            }
+        }
+
+        $(
+            impl Prototype for $prototype_ty {
+                type Patch = $patch_ty;
+
+                const KIND: PrototypeKind = PrototypeKind::$kind_variant;
+            }
+        )+
+    };
+}
+
+define_prototype_kinds! {
+    Substance => (
+        kind_str: "substance",
+        prototype: SubstancePrototype,
+        prototype_body: SubstancePrototype,
+        patch: SubstancePrototypePatch,
+        patch_body: Substance
+    ),
+    SolidCell => (
+        kind_str: "solid_cell",
+        prototype: SolidCellPrototype,
+        prototype_body: SolidCellPrototype,
+        patch: SolidCellPrototypePatch,
+        patch_body: SolidCell
+    ),
+    Structure => (
+        kind_str: "structure",
+        prototype: StructurePrototype,
+        prototype_body: StructurePrototype,
+        patch: StructurePrototypePatch,
+        patch_body: Structure
+    ),
+    Gas => (
+        kind_str: "gas",
+        prototype: GasPrototype,
+        prototype_body: GasPrototype,
+        patch: GasPrototypePatch,
+        patch_body: Gas
+    ),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrototypePatch {
+    pub target: PrototypeId,
+    pub body: PrototypePatchBody,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,6 +388,12 @@ impl PrototypeSource {
             file: file.to_string_lossy().to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppliedPrototypePatch {
+    pub source: PrototypeSource,
+    pub patch_kind: PrototypeKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

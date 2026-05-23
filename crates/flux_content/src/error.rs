@@ -39,6 +39,16 @@ pub enum ContentRegistryError {
     },
 
     #[error(
+        "ContentRegistryError:\n  action: parse_patch_file\n  mod: {mod_id}\n  first_file: {first_file}\n  duplicate_file: {duplicate_file}\n  target: {target}\n  reason: duplicate patch target in one mod"
+    )]
+    DuplicatePatchTargetInMod {
+        mod_id: Box<str>,
+        first_file: Box<str>,
+        duplicate_file: Box<str>,
+        target: Box<str>,
+    },
+
+    #[error(
         "ContentRegistryError:\n  action: validate_content\n  mod: {mod_id}\n  file: {file}\n  prototype_id: {prototype_id}\n  field: {field}\n  reason: {reason}"
     )]
     InvalidPrototypeField {
@@ -46,6 +56,46 @@ pub enum ContentRegistryError {
         file: Box<str>,
         prototype_id: Box<str>,
         field: Box<str>,
+        reason: Box<str>,
+    },
+
+    #[error(
+        "ContentRegistryError:\n  action: apply_patch\n  mod: {mod_id}\n  file: {file}\n  target: {target}\n  patch_kind: {patch_kind}\n  reason: patch body has no fields"
+    )]
+    EmptyPatchBody {
+        mod_id: Box<str>,
+        file: Box<str>,
+        target: Box<str>,
+        patch_kind: Box<str>,
+    },
+
+    #[error(
+        "ContentRegistryError:\n  action: apply_patch\n  mod: {mod_id}\n  file: {file}\n  target: {target}\n  reason: target prototype not found"
+    )]
+    PatchTargetNotFound {
+        mod_id: Box<str>,
+        file: Box<str>,
+        target: Box<str>,
+    },
+
+    #[error(
+        "ContentRegistryError:\n  action: apply_patch\n  mod: {mod_id}\n  file: {file}\n  target: {target}\n  target_kind: {target_kind}\n  patch_kind: {patch_kind}\n  reason: patch kind does not match target kind"
+    )]
+    PatchKindMismatch {
+        mod_id: Box<str>,
+        file: Box<str>,
+        target: Box<str>,
+        target_kind: Box<str>,
+        patch_kind: Box<str>,
+    },
+
+    #[error(
+        "ContentRegistryError:\n  action: apply_patch\n  mod: {mod_id}\n  file: {file}\n  target: {target}\n  reason: patch apply failed ({reason})"
+    )]
+    PatchApplyFailed {
+        mod_id: Box<str>,
+        file: Box<str>,
+        target: Box<str>,
         reason: Box<str>,
     },
 
