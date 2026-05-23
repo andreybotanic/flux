@@ -5,6 +5,7 @@ members = [
     "crates/flux_app",
     "crates/flux_mod_loader",
     "crates/flux_content",
+    "crates/flux_world",
 ]
 
 [workspace.package]
@@ -16,6 +17,7 @@ authors = ["FluxEngine developers"]
 flux_core = { path = "crates/flux_core" }
 flux_mod_loader = { path = "crates/flux_mod_loader" }
 flux_content = { path = "crates/flux_content" }
+flux_world = { path = "crates/flux_world" }
 
 [profile.dev]
 debug = true
