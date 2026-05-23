@@ -21,6 +21,10 @@ pub trait PrototypePatchFor<P: Prototype> {
     fn apply_to(self, target: &mut P) -> PatchResult;
 }
 
+pub(crate) trait PrototypeValidate {
+    fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalizationKey(String);
 
@@ -140,14 +144,28 @@ pub struct StructurePrototype {
     pub size: TileSize,
 }
 
-impl StructurePrototype {
-    pub fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
+impl PrototypeValidate for SubstancePrototype {
+    fn validate(&self, _source: &PrototypeSource) -> Result<(), ContentRegistryError> {
+        // S06: no domain constraints yet; keep explicit validate path for future rules.
+        Ok(())
+    }
+}
+
+impl PrototypeValidate for SolidCellPrototype {
+    fn validate(&self, _source: &PrototypeSource) -> Result<(), ContentRegistryError> {
+        // S06: no domain constraints yet; keep explicit validate path for future rules.
+        Ok(())
+    }
+}
+
+impl PrototypeValidate for StructurePrototype {
+    fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
         self.size.validate(&self.id, source)
     }
 }
 
-impl GasPrototype {
-    pub fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
+impl PrototypeValidate for GasPrototype {
+    fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
         if self.molar_mass.is_finite() && self.molar_mass > 0.0 {
             return Ok(());
         }
@@ -302,6 +320,15 @@ macro_rules! define_prototype_kinds {
             pub fn id(&self) -> &PrototypeId {
                 match self {
                     $(Self::$prototype_body_variant(prototype) => &prototype.id),+
+                }
+            }
+
+            pub fn validate(
+                &self,
+                source: &PrototypeSource,
+            ) -> Result<(), ContentRegistryError> {
+                match self {
+                    $(Self::$prototype_body_variant(prototype) => prototype.validate(source)),+
                 }
             }
         }

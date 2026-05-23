@@ -5,8 +5,8 @@ use flux_core::PrototypeId;
 use crate::ContentRegistryError;
 use crate::types::{
     AppliedPrototypePatch, GasPrototype, GasRecord, PrototypeBody, PrototypeKind, PrototypePatch,
-    PrototypePatchBody, PrototypePatchFor, PrototypeSource, SolidCellPrototype, SolidCellRecord,
-    StructurePrototype, StructureRecord, SubstancePrototype, SubstanceRecord,
+    PrototypePatchBody, PrototypePatchFor, PrototypeSource, PrototypeValidate, SolidCellPrototype,
+    SolidCellRecord, StructurePrototype, StructureRecord, SubstancePrototype, SubstanceRecord,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,55 +122,25 @@ impl ContentRegistry {
                     .substances
                     .get_mut(&patch.target)
                     .expect("index in sync");
-                body.apply_to(&mut record.prototype).map_err(|reason| {
-                    ContentRegistryError::PatchApplyFailed {
-                        mod_id: source.mod_id.clone().into(),
-                        file: source.file.clone().into(),
-                        target: patch.target.to_string().into(),
-                        reason: reason.into(),
-                    }
-                })?;
+                Self::apply_patch_body(&mut record.prototype, body, &source, &patch.target)?;
             }
             PrototypePatchBody::SolidCell(body) => {
                 let record = self
                     .solid_cells
                     .get_mut(&patch.target)
                     .expect("index in sync");
-                body.apply_to(&mut record.prototype).map_err(|reason| {
-                    ContentRegistryError::PatchApplyFailed {
-                        mod_id: source.mod_id.clone().into(),
-                        file: source.file.clone().into(),
-                        target: patch.target.to_string().into(),
-                        reason: reason.into(),
-                    }
-                })?;
+                Self::apply_patch_body(&mut record.prototype, body, &source, &patch.target)?;
             }
             PrototypePatchBody::Structure(body) => {
                 let record = self
                     .structures
                     .get_mut(&patch.target)
                     .expect("index in sync");
-                body.apply_to(&mut record.prototype).map_err(|reason| {
-                    ContentRegistryError::PatchApplyFailed {
-                        mod_id: source.mod_id.clone().into(),
-                        file: source.file.clone().into(),
-                        target: patch.target.to_string().into(),
-                        reason: reason.into(),
-                    }
-                })?;
-                record.prototype.validate(&record.source)?;
+                Self::apply_patch_body(&mut record.prototype, body, &source, &patch.target)?;
             }
             PrototypePatchBody::Gas(body) => {
                 let record = self.gases.get_mut(&patch.target).expect("index in sync");
-                body.apply_to(&mut record.prototype).map_err(|reason| {
-                    ContentRegistryError::PatchApplyFailed {
-                        mod_id: source.mod_id.clone().into(),
-                        file: source.file.clone().into(),
-                        target: patch.target.to_string().into(),
-                        reason: reason.into(),
-                    }
-                })?;
-                record.prototype.validate(&record.source)?;
+                Self::apply_patch_body(&mut record.prototype, body, &source, &patch.target)?;
             }
         }
 
@@ -340,6 +310,25 @@ impl ContentRegistry {
         }
 
         Ok(())
+    }
+
+    fn apply_patch_body<P>(
+        prototype: &mut P,
+        body: P::Patch,
+        source: &PrototypeSource,
+        target: &PrototypeId,
+    ) -> Result<(), ContentRegistryError>
+    where
+        P: crate::types::Prototype + PrototypeValidate,
+    {
+        body.apply_to(prototype)
+            .map_err(|reason| ContentRegistryError::PatchApplyFailed {
+                mod_id: source.mod_id.clone().into(),
+                file: source.file.clone().into(),
+                target: target.to_string().into(),
+                reason: reason.into(),
+            })?;
+        prototype.validate(source)
     }
 
     fn ensure_unique(
