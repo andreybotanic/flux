@@ -204,10 +204,6 @@ impl WorldGrid {
         self.structure_sizes.len()
     }
 
-    pub fn set_structure_size(&mut self, prototype: StructurePrototypeId, size: TileSize) {
-        self.structure_sizes.insert(prototype, size);
-    }
-
     pub fn place_structure(
         &mut self,
         prototype: StructurePrototypeId,
@@ -360,6 +356,18 @@ mod tests {
         PrototypeId::parse(value).expect("valid structure id")
     }
 
+    fn gas_id(value: &str) -> PrototypeId {
+        PrototypeId::parse(value).expect("valid gas id")
+    }
+
+    fn set_test_structure_size(
+        world: &mut WorldGrid,
+        prototype: StructurePrototypeId,
+        size: TileSize,
+    ) {
+        world.structure_sizes.insert(prototype, size);
+    }
+
     #[test]
     fn creates_grid_with_expected_cell_count() {
         let world = WorldGrid::new(GridSize::new(64, 64), 16).expect("world should be created");
@@ -455,7 +463,8 @@ mod tests {
     fn structures_can_be_placed_and_removed() {
         let mut world = WorldGrid::new(GridSize::new(16, 16), 8).expect("world should be created");
         let prototype = structure_id("base:structure/pump");
-        world.set_structure_size(
+        set_test_structure_size(
+            &mut world,
             prototype.clone(),
             TileSize {
                 width: 2,
@@ -467,6 +476,12 @@ mod tests {
             .place_structure(prototype, TilePos::new(3, 4))
             .expect("structure should be placed");
         assert_eq!(world.structures().len(), 1);
+        let placed = world
+            .structures()
+            .get(instance)
+            .expect("placed instance should be available in store");
+        assert_eq!(placed.size.width, 2);
+        assert_eq!(placed.size.height, 2);
         assert!(world.structure_occupancy().is_occupied(TilePos::new(3, 4)));
         assert!(world.structure_occupancy().is_occupied(TilePos::new(4, 5)));
 
@@ -482,7 +497,8 @@ mod tests {
     fn rejects_structure_outside_world() {
         let mut world = WorldGrid::new(GridSize::new(8, 8), 4).expect("world should be created");
         let prototype = structure_id("base:structure/pump");
-        world.set_structure_size(
+        set_test_structure_size(
+            &mut world,
             prototype.clone(),
             TileSize {
                 width: 2,
@@ -501,7 +517,8 @@ mod tests {
     fn rejects_overlapping_structures() {
         let mut world = WorldGrid::new(GridSize::new(16, 16), 4).expect("world should be created");
         let prototype = structure_id("base:structure/pump");
-        world.set_structure_size(
+        set_test_structure_size(
+            &mut world,
             prototype.clone(),
             TileSize {
                 width: 2,
@@ -523,5 +540,70 @@ mod tests {
     fn unoccupied_cells_return_none() {
         let world = WorldGrid::new(GridSize::new(8, 8), 4).expect("world should be created");
         assert_eq!(world.structure_occupancy().get(TilePos::new(2, 2)), None);
+    }
+
+    #[test]
+    fn cell_gas_total_particles_stays_correct_after_add_and_remove() {
+        let mut world = WorldGrid::new(GridSize::new(8, 8), 4).expect("world should be created");
+        let pos = TilePos::new(2, 3);
+        let oxygen = gas_id("base:gas/oxygen");
+        let hydrogen = gas_id("base:gas/hydrogen");
+        let cell_index = world.cell_index(pos).expect("cell should be in bounds").0;
+
+        world
+            .gases
+            .get_mut(cell_index)
+            .expect("cell should exist")
+            .add_particles(oxygen.clone(), ParticleCount(10))
+            .expect("oxygen should be added");
+        assert_eq!(
+            world
+                .gas_at(pos)
+                .expect("cell should exist")
+                .total_particles(),
+            ParticleCount(10)
+        );
+
+        world
+            .gases
+            .get_mut(cell_index)
+            .expect("cell should exist")
+            .add_particles(hydrogen.clone(), ParticleCount(5))
+            .expect("hydrogen should be added");
+        assert_eq!(
+            world
+                .gas_at(pos)
+                .expect("cell should exist")
+                .total_particles(),
+            ParticleCount(15)
+        );
+
+        world
+            .gases
+            .get_mut(cell_index)
+            .expect("cell should exist")
+            .add_particles(oxygen.clone(), ParticleCount(3))
+            .expect("oxygen should be increased");
+        assert_eq!(
+            world
+                .gas_at(pos)
+                .expect("cell should exist")
+                .total_particles(),
+            ParticleCount(18)
+        );
+
+        world
+            .gases
+            .get_mut(cell_index)
+            .expect("cell should exist")
+            .remove_particles(oxygen, ParticleCount(4))
+            .expect("oxygen should be removed");
+        assert_eq!(
+            world
+                .gas_at(pos)
+                .expect("cell should exist")
+                .total_particles(),
+            ParticleCount(14)
+        );
     }
 }
