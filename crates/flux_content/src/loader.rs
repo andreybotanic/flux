@@ -7,9 +7,11 @@ use flux_mod_loader::{DiscoveredMod, ResolvedModOrder};
 
 use crate::ContentRegistry;
 use crate::ContentRegistryError;
-use crate::types::{PrototypeSource, StructurePrototype, SubstancePrototype};
+use crate::types::{
+    GasPrototype, PrototypeSource, SolidCellPrototype, StructurePrototype, SubstancePrototype,
+};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContentLoadReport {
     pub registry: Option<ContentRegistry>,
     pub errors: Vec<ContentRegistryError>,
@@ -38,8 +40,10 @@ pub fn load_content_registry(
             }
         };
 
+        load_mod_solid_cells(module, &mut registry, &mut errors);
         load_mod_substances(module, &mut registry, &mut errors);
         load_mod_structures(module, &mut registry, &mut errors);
+        load_mod_gases(module, &mut registry, &mut errors);
     }
 
     if errors.is_empty() {
@@ -74,6 +78,24 @@ fn load_mod_substances(
     }
 }
 
+fn load_mod_solid_cells(
+    module: &DiscoveredMod,
+    registry: &mut ContentRegistry,
+    errors: &mut Vec<ContentRegistryError>,
+) {
+    let dir = module.directory_path.join("content").join("solid_cells");
+    for file in collect_ron_files(module, &dir, errors) {
+        match parse_solid_cell(module, &file) {
+            Ok((prototype, source)) => {
+                if let Err(error) = registry.add_solid_cell(prototype, source) {
+                    errors.push(error);
+                }
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+}
+
 fn load_mod_structures(
     module: &DiscoveredMod,
     registry: &mut ContentRegistry,
@@ -95,6 +117,42 @@ fn load_mod_structures(
             Err(error) => errors.push(error),
         }
     }
+}
+
+fn load_mod_gases(
+    module: &DiscoveredMod,
+    registry: &mut ContentRegistry,
+    errors: &mut Vec<ContentRegistryError>,
+) {
+    let dir = module.directory_path.join("content").join("gases");
+    for file in collect_ron_files(module, &dir, errors) {
+        match parse_gas(module, &file) {
+            Ok((prototype, source)) => {
+                if let Err(error) = registry.add_gas(prototype, source) {
+                    errors.push(error);
+                }
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+}
+
+fn parse_solid_cell(
+    module: &DiscoveredMod,
+    file: &Path,
+) -> Result<(SolidCellPrototype, PrototypeSource), ContentRegistryError> {
+    let source = PrototypeSource::from_discovered(module, file);
+    let body = read_file(module, file)?;
+    let prototype: SolidCellPrototype =
+        ron::from_str(&body).map_err(|error| ContentRegistryError::FileParse {
+            mod_id: source.mod_id.clone().into(),
+            file: source.file.clone().into(),
+            prototype_kind: "solid_cell".into(),
+            reason: error.to_string().into(),
+        })?;
+
+    validate_prototype_id_namespace(module, file, &prototype.id)?;
+    Ok((prototype, source))
 }
 
 fn parse_substance(
@@ -126,6 +184,24 @@ fn parse_structure(
             mod_id: source.mod_id.clone().into(),
             file: source.file.clone().into(),
             prototype_kind: "structure".into(),
+            reason: error.to_string().into(),
+        })?;
+
+    validate_prototype_id_namespace(module, file, &prototype.id)?;
+    Ok((prototype, source))
+}
+
+fn parse_gas(
+    module: &DiscoveredMod,
+    file: &Path,
+) -> Result<(GasPrototype, PrototypeSource), ContentRegistryError> {
+    let source = PrototypeSource::from_discovered(module, file);
+    let body = read_file(module, file)?;
+    let prototype: GasPrototype =
+        ron::from_str(&body).map_err(|error| ContentRegistryError::FileParse {
+            mod_id: source.mod_id.clone().into(),
+            file: source.file.clone().into(),
+            prototype_kind: "gas".into(),
             reason: error.to_string().into(),
         })?;
 
@@ -253,8 +329,10 @@ mod tests {
     fn loads_content_and_freezes_registry() {
         let temp_dir = TempDir::new().expect("tempdir");
         let mods_root = temp_dir.path().join("mods");
+        fs::create_dir_all(mods_root.join("base/content/solid_cells")).expect("create dir");
         fs::create_dir_all(mods_root.join("base/content/substances")).expect("create dir");
         fs::create_dir_all(mods_root.join("base/content/structures")).expect("create dir");
+        fs::create_dir_all(mods_root.join("base/content/gases")).expect("create dir");
         write_manifest(
             &mods_root.join("base/manifest.toml"),
             r#"
@@ -265,6 +343,11 @@ api_version = "0.1.0"
 "#,
         );
         fs::write(
+            mods_root.join("base/content/solid_cells/floor_cell.ron"),
+            "(id: \"base:solid_cell/floor_cell\", display_name: \"base.solid_cell.floor_cell\", gas_permeable: false)",
+        )
+        .expect("write solid cell");
+        fs::write(
             mods_root.join("base/content/substances/oxygen.ron"),
             "(id: \"base:material/oxygen\", display_name: \"base.substance.oxygen\")",
         )
@@ -274,6 +357,11 @@ api_version = "0.1.0"
             "(id: \"base:building/gas_pump\", display_name: \"base.structure.gas_pump\", size: (width: 1, height: 2))",
         )
         .expect("write structure");
+        fs::write(
+            mods_root.join("base/content/gases/oxygen.ron"),
+            "(id: \"base:gas/oxygen\", display_name: \"base.gas.oxygen\", molar_mass: 31.998)",
+        )
+        .expect("write gas");
 
         let report = discover_and_resolve_mods(&mods_root);
         let load_report = load_content_registry(
@@ -284,8 +372,10 @@ api_version = "0.1.0"
 
         assert!(load_report.errors.is_empty());
         assert!(registry.is_frozen());
+        assert_eq!(registry.solid_cells_len(), 1);
         assert_eq!(registry.substances_len(), 1);
         assert_eq!(registry.structures_len(), 1);
+        assert_eq!(registry.gases_len(), 1);
     }
 
     #[test]

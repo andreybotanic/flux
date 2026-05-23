@@ -4,8 +4,8 @@ use flux_core::PrototypeId;
 
 use crate::ContentRegistryError;
 use crate::types::{
-    PrototypeKind, PrototypeSource, StructurePrototype, StructureRecord, SubstancePrototype,
-    SubstanceRecord,
+    GasPrototype, GasRecord, PrototypeKind, PrototypeSource, SolidCellPrototype, SolidCellRecord,
+    StructurePrototype, StructureRecord, SubstancePrototype, SubstanceRecord,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,12 +20,14 @@ struct RegisteredPrototype {
     source: PrototypeSource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContentRegistry {
     state: RegistryState,
     prototype_index: BTreeMap<PrototypeId, RegisteredPrototype>,
     substances: BTreeMap<PrototypeId, SubstanceRecord>,
+    solid_cells: BTreeMap<PrototypeId, SolidCellRecord>,
     structures: BTreeMap<PrototypeId, StructureRecord>,
+    gases: BTreeMap<PrototypeId, GasRecord>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,7 +42,9 @@ impl ContentRegistry {
             state: RegistryState::Building,
             prototype_index: BTreeMap::new(),
             substances: BTreeMap::new(),
+            solid_cells: BTreeMap::new(),
             structures: BTreeMap::new(),
+            gases: BTreeMap::new(),
         }
     }
 
@@ -105,12 +109,66 @@ impl ContentRegistry {
         Ok(())
     }
 
+    pub fn add_solid_cell(
+        &mut self,
+        prototype: SolidCellPrototype,
+        source: PrototypeSource,
+    ) -> Result<(), ContentRegistryError> {
+        self.ensure_mutable(PrototypeKind::SolidCell, &prototype.id)?;
+        self.ensure_unique(PrototypeKind::SolidCell, &prototype.id, &source)?;
+
+        let id = prototype.id.clone();
+        let source_for_index = source.clone();
+        self.solid_cells
+            .insert(id.clone(), SolidCellRecord { prototype, source });
+        self.prototype_index.insert(
+            id,
+            RegisteredPrototype {
+                kind: PrototypeKind::SolidCell,
+                source: source_for_index,
+            },
+        );
+
+        Ok(())
+    }
+
+    pub fn add_gas(
+        &mut self,
+        prototype: GasPrototype,
+        source: PrototypeSource,
+    ) -> Result<(), ContentRegistryError> {
+        self.ensure_mutable(PrototypeKind::Gas, &prototype.id)?;
+        self.ensure_unique(PrototypeKind::Gas, &prototype.id, &source)?;
+
+        let id = prototype.id.clone();
+        let source_for_index = source.clone();
+        self.gases
+            .insert(id.clone(), GasRecord { prototype, source });
+        self.prototype_index.insert(
+            id,
+            RegisteredPrototype {
+                kind: PrototypeKind::Gas,
+                source: source_for_index,
+            },
+        );
+
+        Ok(())
+    }
+
     pub fn substances(&self) -> impl Iterator<Item = &SubstanceRecord> {
         self.substances.values()
     }
 
+    pub fn solid_cells(&self) -> impl Iterator<Item = &SolidCellRecord> {
+        self.solid_cells.values()
+    }
+
     pub fn structures(&self) -> impl Iterator<Item = &StructureRecord> {
         self.structures.values()
+    }
+
+    pub fn gases(&self) -> impl Iterator<Item = &GasRecord> {
+        self.gases.values()
     }
 
     #[must_use]
@@ -119,8 +177,18 @@ impl ContentRegistry {
     }
 
     #[must_use]
+    pub fn solid_cells_len(&self) -> usize {
+        self.solid_cells.len()
+    }
+
+    #[must_use]
     pub fn structures_len(&self) -> usize {
         self.structures.len()
+    }
+
+    #[must_use]
+    pub fn gases_len(&self) -> usize {
+        self.gases.len()
     }
 
     fn ensure_mutable(
@@ -178,7 +246,7 @@ mod tests {
     use flux_core::PrototypeId;
 
     use super::*;
-    use crate::types::{LocalizationKey, TileSize};
+    use crate::types::{GasPrototype, LocalizationKey, TileSize};
 
     #[test]
     fn rejects_mutation_after_freeze() {
@@ -233,6 +301,43 @@ mod tests {
             PrototypeSource {
                 mod_id: "base".to_owned(),
                 file: "mods/base/content/structures/oxygen.ron".to_owned(),
+            },
+        );
+
+        assert!(matches!(
+            duplicate,
+            Err(ContentRegistryError::DuplicatePrototypeId { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_id_between_substance_and_gas() {
+        let mut registry = ContentRegistry::new();
+        let id = PrototypeId::parse("base:material/oxygen").expect("valid id");
+
+        registry
+            .add_substance(
+                SubstancePrototype {
+                    id: id.clone(),
+                    display_name: LocalizationKey::parse("base.substance.oxygen")
+                        .expect("valid key"),
+                },
+                PrototypeSource {
+                    mod_id: "base".to_owned(),
+                    file: "mods/base/content/substances/oxygen.ron".to_owned(),
+                },
+            )
+            .expect("must add");
+
+        let duplicate = registry.add_gas(
+            GasPrototype {
+                id,
+                display_name: LocalizationKey::parse("base.gas.oxygen").expect("valid key"),
+                molar_mass: 31.998,
+            },
+            PrototypeSource {
+                mod_id: "base".to_owned(),
+                file: "mods/base/content/gases/oxygen.ron".to_owned(),
             },
         );
 

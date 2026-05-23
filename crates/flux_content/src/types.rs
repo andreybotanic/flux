@@ -104,6 +104,22 @@ pub struct SubstancePrototype {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct SolidCellPrototype {
+    pub id: PrototypeId,
+    pub display_name: LocalizationKey,
+    pub gas_permeable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GasPrototype {
+    pub id: PrototypeId,
+    pub display_name: LocalizationKey,
+    pub molar_mass: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StructurePrototype {
     pub id: PrototypeId,
     pub display_name: LocalizationKey,
@@ -113,7 +129,9 @@ pub struct StructurePrototype {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrototypeKind {
     Substance,
+    SolidCell,
     Structure,
+    Gas,
 }
 
 impl PrototypeKind {
@@ -121,7 +139,9 @@ impl PrototypeKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Substance => "substance",
+            Self::SolidCell => "solid_cell",
             Self::Structure => "structure",
+            Self::Gas => "gas",
         }
     }
 }
@@ -149,7 +169,19 @@ pub struct SubstanceRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolidCellRecord {
+    pub prototype: SolidCellPrototype,
+    pub source: PrototypeSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructureRecord {
     pub prototype: StructurePrototype,
+    pub source: PrototypeSource,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GasRecord {
+    pub prototype: GasPrototype,
     pub source: PrototypeSource,
 }

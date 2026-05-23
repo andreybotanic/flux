@@ -220,10 +220,24 @@ fn run_list_content() -> i32 {
         .expect("content registry must exist when there are no content errors");
 
     println!(
-        "content summary: substances={} structures={}",
+        "content summary: solid_cells={} substances={} structures={} gases={}",
+        registry.solid_cells_len(),
         registry.substances_len(),
-        registry.structures_len()
+        registry.structures_len(),
+        registry.gases_len()
     );
+
+    println!("solid cells:");
+    for record in registry.solid_cells() {
+        println!(
+            "- id={} display_name={} gas_permeable={} source_mod={} source_file={}",
+            record.prototype.id,
+            record.prototype.display_name,
+            record.prototype.gas_permeable,
+            record.source.mod_id,
+            record.source.file
+        );
+    }
 
     println!("substances:");
     for record in registry.substances() {
@@ -244,6 +258,18 @@ fn run_list_content() -> i32 {
             record.prototype.display_name,
             record.prototype.size.width,
             record.prototype.size.height,
+            record.source.mod_id,
+            record.source.file
+        );
+    }
+
+    println!("gases:");
+    for record in registry.gases() {
+        println!(
+            "- id={} display_name={} molar_mass={} source_mod={} source_file={}",
+            record.prototype.id,
+            record.prototype.display_name,
+            record.prototype.molar_mass,
             record.source.mod_id,
             record.source.file
         );

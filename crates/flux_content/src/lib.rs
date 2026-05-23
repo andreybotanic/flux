@@ -9,6 +9,7 @@ pub use error::ContentRegistryError;
 pub use loader::{ContentLoadReport, load_content_registry};
 pub use registry::{ContentRegistry, FrozenContentRegistry, RegistryState};
 pub use types::{
-    LocalizationKey, PrototypeKind, PrototypeSource, StructurePrototype, StructureRecord,
-    SubstancePrototype, SubstanceRecord, TileSize,
+    GasPrototype, GasRecord, LocalizationKey, PrototypeKind, PrototypeSource, SolidCellPrototype,
+    SolidCellRecord, StructurePrototype, StructureRecord, SubstancePrototype, SubstanceRecord,
+    TileSize,
 };
