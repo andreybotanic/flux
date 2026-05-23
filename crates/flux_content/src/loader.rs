@@ -206,7 +206,29 @@ fn parse_gas(
         })?;
 
     validate_prototype_id_namespace(module, file, &prototype.id)?;
+    validate_gas_molar_mass(&source, &prototype)?;
     Ok((prototype, source))
+}
+
+fn validate_gas_molar_mass(
+    source: &PrototypeSource,
+    prototype: &GasPrototype,
+) -> Result<(), ContentRegistryError> {
+    if prototype.molar_mass.is_finite() && prototype.molar_mass > 0.0 {
+        return Ok(());
+    }
+
+    Err(ContentRegistryError::InvalidPrototypeField {
+        mod_id: source.mod_id.clone().into(),
+        file: source.file.clone().into(),
+        prototype_id: prototype.id.to_string().into(),
+        field: "molar_mass".into(),
+        reason: format!(
+            "molar_mass must be finite and greater than zero, got {}",
+            prototype.molar_mass
+        )
+        .into(),
+    })
 }
 
 fn validate_prototype_id_namespace(
