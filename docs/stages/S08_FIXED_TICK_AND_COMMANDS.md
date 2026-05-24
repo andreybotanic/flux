@@ -17,18 +17,15 @@
 
 - Создать crate `flux_sim` или соответствующий модуль.
 - Добавить:
-  - `FixedTick`;
-  - `SimCommand`;
-  - `SimEvent`;
+  - `FixedTick` - шаг симуляции не должен зависеть от FPS;
+  - `Command`;
+  - `Event`;
   - `CommandQueue`;
-  - `EventQueue`;
+  - `EventQueue` или аналог;
   - deterministic tick counter.
-- Минимальная команда: `CreateWorld { width, height, seed }`.
-- Минимальное событие: `WorldCreated { width, height }`.
+- Минимальные команды: `CreateWorld { width, height, seed }`, `WaitTicks`.
+- Минимальное событие: `WorldCreated`.
 
-## Важное уточнение
-
-Именно этот этап впервые вводит понятие FluxEngine simulation tick. До S08 нельзя использовать `WaitTicks` в сценариях.
 
 ## Ручная проверка
 
@@ -43,7 +40,6 @@
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 scripts/check_plan_index.py
 ```
 
 ## Definition of Done
