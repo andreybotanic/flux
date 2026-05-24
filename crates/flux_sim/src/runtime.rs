@@ -83,14 +83,6 @@ impl SimRuntime {
         Ok(())
     }
 
-    pub fn advance_by_delta(&mut self, delta: Duration) -> Result<u64, SimError> {
-        let ticks = self.fixed_tick.advance(delta)?;
-        for _ in 0..ticks {
-            self.step()?;
-        }
-        Ok(ticks)
-    }
-
     /// Executes one simulation step for one fixed tick.
     ///
     /// S08 keeps this as a no-op simulation body, but the method is explicit
@@ -246,21 +238,5 @@ mod tests {
         );
         assert!(runtime.events().is_empty());
         assert!(runtime.world().is_none());
-    }
-
-    #[test]
-    fn frame_delta_advances_ticks_by_fixed_step() {
-        let mut runtime = runtime();
-
-        let first = runtime
-            .advance_by_delta(Duration::from_millis(5))
-            .expect("advance should work");
-        let second = runtime
-            .advance_by_delta(Duration::from_millis(11))
-            .expect("advance should work");
-
-        assert_eq!(first, 0);
-        assert_eq!(second, 1);
-        assert_eq!(runtime.tick_counter(), 1);
     }
 }

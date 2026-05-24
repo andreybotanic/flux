@@ -187,7 +187,6 @@ Chunk metadata можно использовать для dirty render/save/prof
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 scripts/check_plan_index.py
 ```
 
 Если этап добавляет сценарий:
@@ -253,7 +252,6 @@ Automated checks:
 - cargo fmt --all --check: pass/fail
 - cargo clippy ...: pass/fail
 - cargo test --workspace: pass/fail
-- python3 scripts/check_plan_index.py: pass/fail
 
 Touched files:
 - ...

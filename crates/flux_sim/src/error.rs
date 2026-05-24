@@ -5,12 +5,6 @@ pub enum SimError {
     #[error("invalid fixed tick step: duration must be greater than zero")]
     InvalidFixedTickStep,
 
-    #[error("fixed tick accumulator overflow while adding delta {delta_nanos}ns")]
-    TickAccumulatorOverflow { delta_nanos: u128 },
-
-    #[error("fixed tick advancement produced more than u64::MAX ticks")]
-    TickCountOverflow,
-
     #[error("invalid chunk size: chunk size must be greater than zero, got {chunk_size}")]
     InvalidChunkSize { chunk_size: u32 },
 
