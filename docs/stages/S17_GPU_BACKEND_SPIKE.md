@@ -14,10 +14,6 @@
 
 Добавить контракт simulation backend и экспериментальный GPU compute spike.
 
-## Roadmap revision note
-
-Раньше зависел от S11; теперь от нового S08.
-
 
 ## Требования к реализации
 
@@ -41,7 +37,6 @@
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 scripts/check_plan_index.py
 ```
 
 ## Definition of Done

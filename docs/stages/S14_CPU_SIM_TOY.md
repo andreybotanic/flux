@@ -15,10 +15,6 @@
 
 Добавить первую простую CPU-симуляцию, чтобы проверить fixed tick и структуру мира.
 
-## Roadmap revision note
-
-Сохраняет номер, но теперь зависит от нового S08.
-
 
 ## Требования к реализации
 
@@ -43,7 +39,6 @@
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 scripts/check_plan_index.py
 ```
 
 ## Definition of Done

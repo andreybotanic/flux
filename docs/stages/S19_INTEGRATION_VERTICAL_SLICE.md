@@ -15,10 +15,6 @@
 
 Собрать первый вертикальный срез платформы: моды, контент, UI, мир, сценарий, скриншот, сохранение, replay.
 
-## Roadmap revision note
-
-Финальный интеграционный этап первого roadmap-среза.
-
 
 ## Требования к реализации
 
@@ -52,7 +48,6 @@
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 scripts/check_plan_index.py
 ```
 
 ## Definition of Done

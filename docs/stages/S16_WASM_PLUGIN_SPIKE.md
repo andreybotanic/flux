@@ -15,10 +15,6 @@
 
 Проверить runtime-плагины через WASM на минимальном событии/команде.
 
-## Roadmap revision note
-
-Теперь зависит от command/event loop.
-
 
 ## Требования к реализации
 
@@ -48,7 +44,6 @@
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 scripts/check_plan_index.py
 ```
 
 ## Definition of Done

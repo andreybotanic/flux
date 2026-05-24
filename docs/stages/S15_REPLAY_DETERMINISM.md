@@ -14,10 +14,6 @@
 
 Добавить replay harness, command log и проверку воспроизводимости результата.
 
-## Roadmap revision note
-
-Теперь зависит от scenario runtime.
-
 
 ## Требования к реализации
 
@@ -45,7 +41,6 @@
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 scripts/check_plan_index.py
 ```
 
 ## Definition of Done
