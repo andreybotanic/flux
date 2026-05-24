@@ -21,10 +21,4 @@ pub enum SimError {
 
     #[error("tick counter overflow: current={current}, delta={delta}")]
     TickCounterOverflow { current: u64, delta: u64 },
-
-    #[error("runtime initialization already completed")]
-    RuntimeAlreadyInitialized,
-
-    #[error("cannot enqueue command after runtime initialization")]
-    EnqueueAfterInitialization,
 }

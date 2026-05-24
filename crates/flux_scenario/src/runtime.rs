@@ -20,13 +20,13 @@ pub fn run_scenario(
     let scenario_id = scenario.id.to_string();
 
     for (step_index, step) in scenario.steps.iter().enumerate() {
-        if matches!(step, ScenarioStep::AssertTickStep(_)) && !runtime.is_initialized() {
+        step.run(runtime, &scenario_id, step_index)?;
+        if matches!(
+            step,
+            ScenarioStep::CreateWorldStep(_) | ScenarioStep::WaitTicksStep(_)
+        ) {
             initialize_runtime(runtime, &scenario_id, step_index)?;
         }
-        step.run(runtime, &scenario_id, step_index)?;
-    }
-    if !runtime.is_initialized() {
-        initialize_runtime(runtime, &scenario_id, scenario.steps.len())?;
     }
 
     Ok(ScenarioRunSummary {
@@ -154,7 +154,7 @@ mod tests {
     use std::time::Duration;
 
     use flux_core::PrototypeId;
-    use flux_sim::{SimError, SimRuntime};
+    use flux_sim::SimRuntime;
 
     use crate::{
         AssertTickStep, CreateWorldStep, LogStep, ScenarioDefinition, ScenarioRunError,
@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn scenario_without_assert_initializes_at_end() {
+    fn scenario_without_assert_runs_in_step_order() {
         let scenario = ScenarioDefinition {
             id: PrototypeId::parse("test_scenarios:scenario/no_assert").expect("valid id"),
             steps: vec![
@@ -244,9 +244,10 @@ mod tests {
     }
 
     #[test]
-    fn command_after_assert_is_rejected() {
+    fn commands_after_assert_are_executed_in_order() {
         let scenario = ScenarioDefinition {
-            id: PrototypeId::parse("test_scenarios:scenario/invalid_order").expect("valid id"),
+            id: PrototypeId::parse("test_scenarios:scenario/command_after_assert")
+                .expect("valid id"),
             steps: vec![
                 ScenarioStep::CreateWorldStep(CreateWorldStep {
                     width: 16,
@@ -256,19 +257,40 @@ mod tests {
                 ScenarioStep::WaitTicksStep(WaitTicksStep(2)),
                 ScenarioStep::AssertTickStep(AssertTickStep(2)),
                 ScenarioStep::WaitTicksStep(WaitTicksStep(1)),
+                ScenarioStep::AssertTickStep(AssertTickStep(3)),
             ],
         };
         let mut runtime = runtime();
 
-        let error = run_scenario(&mut runtime, &scenario).expect_err("scenario should fail");
-        assert_eq!(
-            error,
-            ScenarioRunError::SimCommandFailed {
-                scenario_id: "test_scenarios:scenario/invalid_order".into(),
-                step_index: 3,
-                step_kind: "WaitTicks".into(),
-                source: SimError::EnqueueAfterInitialization
-            }
-        );
+        let summary = run_scenario(&mut runtime, &scenario).expect("scenario should succeed");
+
+        assert_eq!(summary.executed_steps, 5);
+        assert_eq!(summary.final_tick, 3);
+    }
+
+    #[test]
+    fn multiple_wait_assert_blocks_preserve_command_order() {
+        let scenario = ScenarioDefinition {
+            id: PrototypeId::parse("test_scenarios:scenario/multi_phase_order").expect("valid id"),
+            steps: vec![
+                ScenarioStep::CreateWorldStep(CreateWorldStep {
+                    width: 16,
+                    height: 16,
+                    seed: 1,
+                }),
+                ScenarioStep::WaitTicksStep(WaitTicksStep(1)),
+                ScenarioStep::AssertTickStep(AssertTickStep(1)),
+                ScenarioStep::WaitTicksStep(WaitTicksStep(4)),
+                ScenarioStep::AssertTickStep(AssertTickStep(5)),
+                ScenarioStep::WaitTicksStep(WaitTicksStep(2)),
+                ScenarioStep::AssertTickStep(AssertTickStep(7)),
+            ],
+        };
+        let mut runtime = runtime();
+
+        let summary = run_scenario(&mut runtime, &scenario).expect("scenario should succeed");
+
+        assert_eq!(summary.executed_steps, 7);
+        assert_eq!(summary.final_tick, 7);
     }
 }

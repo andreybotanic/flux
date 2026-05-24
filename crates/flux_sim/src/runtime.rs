@@ -80,17 +80,11 @@ impl SimRuntime {
     }
 
     pub fn enqueue_command(&mut self, command: SimCommand) -> Result<(), SimError> {
-        if self.initialized {
-            return Err(SimError::EnqueueAfterInitialization);
-        }
         self.commands.enqueue(command);
         Ok(())
     }
 
     pub fn initialize(&mut self) -> Result<(), SimError> {
-        if self.initialized {
-            return Err(SimError::RuntimeAlreadyInitialized);
-        }
         self.process_queued_commands()?;
         self.initialized = true;
         Ok(())
@@ -269,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn initialize_is_single_shot() {
+    fn initialize_can_be_called_multiple_times() {
         let mut runtime = runtime();
         runtime
             .enqueue_command(SimCommand::WaitTicks { ticks: 1 })
@@ -277,21 +271,29 @@ mod tests {
         runtime
             .initialize()
             .expect("first initialize should succeed");
-
-        let error = runtime
+        runtime
+            .enqueue_command(SimCommand::WaitTicks { ticks: 2 })
+            .expect("enqueue should succeed");
+        runtime
             .initialize()
-            .expect_err("second initialize should fail");
-        assert_eq!(error, SimError::RuntimeAlreadyInitialized);
+            .expect("second initialize should also succeed");
+
+        assert_eq!(runtime.tick_counter(), 3);
     }
 
     #[test]
-    fn enqueue_after_initialize_is_rejected() {
+    fn enqueue_after_initialize_is_allowed() {
         let mut runtime = runtime();
         runtime.initialize().expect("initialize should succeed");
 
-        let error = runtime
+        runtime
             .enqueue_command(SimCommand::WaitTicks { ticks: 1 })
-            .expect_err("enqueue after initialize should fail");
-        assert_eq!(error, SimError::EnqueueAfterInitialization);
+            .expect("enqueue after initialize should succeed");
+        assert_eq!(runtime.tick_counter(), 0);
+
+        runtime
+            .initialize()
+            .expect("newly queued command should be processed");
+        assert_eq!(runtime.tick_counter(), 1);
     }
 }
