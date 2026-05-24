@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy::render::RenderPlugin;
 use bevy::render::settings::{InstanceFlags, RenderCreation, WgpuSettings};
 use bevy::window::{Window, WindowPlugin};
-use flux_core::PrototypeId;
+use flux_core::{NamespacedId, PrototypeId};
 use flux_mod_loader::DiscoveredMod;
 use flux_sim::SimRuntime;
 use flux_ui::{
@@ -232,45 +232,38 @@ fn setup_primary_ui_camera(mut commands: Commands) {
 fn setup_flux_ui_runtime(mut commands: Commands) {
     let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
     if !report.errors.is_empty() {
-        for error in &report.errors {
-            error!("ui startup skipped: {error}");
-        }
-        return;
+        panic!(
+            "ui startup failed during mod discovery:\n{}",
+            format_error_block(&report.errors)
+        );
     }
 
     let resolved_order = match report.resolved_order.as_ref() {
         Some(order) => order,
         None => {
-            error!("ui startup skipped: resolved mod order is missing");
-            return;
+            panic!("ui startup failed: resolved mod order is missing");
         }
     };
 
     let ui_report = flux_ui::load_ui_registry(&report.valid_mods, resolved_order);
     if !ui_report.errors.is_empty() {
-        for error in &ui_report.errors {
-            error!("ui startup skipped: {error}");
-        }
-        return;
+        panic!(
+            "ui startup failed during UI registration:\n{}",
+            format_error_block(&ui_report.errors)
+        );
     }
 
     let registry = match ui_report.registry {
         Some(registry) => registry,
         None => {
-            error!("ui startup skipped: ui registry is missing");
-            return;
+            panic!("ui startup failed: ui registry is missing");
         }
     };
 
     let known_menus = registry.menu_ids();
     info!("ui registry loaded: menus={}", known_menus.len());
-    let initial_menu = match known_menus.first() {
-        Some(menu_id) => menu_id.clone(),
-        None => {
-            warn!("ui startup skipped: no menus were loaded");
-            return;
-        }
-    };
+    let initial_menu = resolve_initial_menu(&known_menus)
+        .unwrap_or_else(|reason| panic!("ui startup failed: {reason}"));
     info!("ui initial menu: {}", initial_menu);
 
     commands.insert_resource(FluxUiState {
@@ -279,6 +272,31 @@ fn setup_flux_ui_runtime(mut commands: Commands) {
         known_menus,
         needs_rebuild: true,
     });
+}
+
+fn resolve_initial_menu(known_menus: &BTreeSet<UiMenuId>) -> Result<UiMenuId, String> {
+    const BASE_MAIN_MENU_ID: &str = "base:menu/main";
+
+    let parsed = NamespacedId::parse(BASE_MAIN_MENU_ID).map_err(|_| {
+        format!("invalid hardcoded initial menu id `{BASE_MAIN_MENU_ID}` (must be namespace:path)")
+    })?;
+    let initial_menu = UiMenuId(parsed);
+
+    if known_menus.contains(&initial_menu) {
+        return Ok(initial_menu);
+    }
+
+    Err(format!(
+        "required initial menu `{BASE_MAIN_MENU_ID}` is not loaded"
+    ))
+}
+
+fn format_error_block<T: std::fmt::Display>(errors: &[T]) -> String {
+    errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn handle_ui_button_interactions(
@@ -913,5 +931,29 @@ mod tests {
                 .to_string()
                 .contains("scenario_id: test_scenarios:scenario/does_not_exist")
         );
+    }
+
+    #[test]
+    fn resolves_base_main_menu_as_initial_menu() {
+        let mut known_menus = BTreeSet::new();
+        let main_menu = UiMenuId(NamespacedId::parse("base:menu/main").expect("id"));
+        known_menus.insert(main_menu.clone());
+        known_menus.insert(UiMenuId(
+            NamespacedId::parse("example_ui:menu/debug").expect("id"),
+        ));
+
+        let resolved = resolve_initial_menu(&known_menus).expect("initial menu must resolve");
+        assert_eq!(resolved, main_menu);
+    }
+
+    #[test]
+    fn rejects_missing_base_main_menu() {
+        let mut known_menus = BTreeSet::new();
+        known_menus.insert(UiMenuId(
+            NamespacedId::parse("example_ui:menu/debug").expect("id"),
+        ));
+
+        let error = resolve_initial_menu(&known_menus).expect_err("must fail");
+        assert!(error.contains("required initial menu `base:menu/main` is not loaded"));
     }
 }
