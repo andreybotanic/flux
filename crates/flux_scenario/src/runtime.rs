@@ -154,7 +154,7 @@ mod tests {
     use std::time::Duration;
 
     use flux_core::PrototypeId;
-    use flux_sim::SimRuntime;
+    use flux_sim::{SimError, SimRuntime};
 
     use crate::{
         AssertTickStep, CreateWorldStep, LogStep, ScenarioDefinition, ScenarioRunError,
@@ -217,6 +217,57 @@ mod tests {
                 step_index: 2,
                 expected: 5,
                 actual: 2
+            }
+        );
+    }
+
+    #[test]
+    fn scenario_without_assert_initializes_at_end() {
+        let scenario = ScenarioDefinition {
+            id: PrototypeId::parse("test_scenarios:scenario/no_assert").expect("valid id"),
+            steps: vec![
+                ScenarioStep::CreateWorldStep(CreateWorldStep {
+                    width: 16,
+                    height: 16,
+                    seed: 1,
+                }),
+                ScenarioStep::WaitTicksStep(WaitTicksStep(3)),
+                ScenarioStep::LogStep(LogStep("done".to_owned())),
+            ],
+        };
+        let mut runtime = runtime();
+
+        let summary = run_scenario(&mut runtime, &scenario).expect("scenario should succeed");
+
+        assert_eq!(summary.executed_steps, 3);
+        assert_eq!(summary.final_tick, 3);
+    }
+
+    #[test]
+    fn command_after_assert_is_rejected() {
+        let scenario = ScenarioDefinition {
+            id: PrototypeId::parse("test_scenarios:scenario/invalid_order").expect("valid id"),
+            steps: vec![
+                ScenarioStep::CreateWorldStep(CreateWorldStep {
+                    width: 16,
+                    height: 16,
+                    seed: 1,
+                }),
+                ScenarioStep::WaitTicksStep(WaitTicksStep(2)),
+                ScenarioStep::AssertTickStep(AssertTickStep(2)),
+                ScenarioStep::WaitTicksStep(WaitTicksStep(1)),
+            ],
+        };
+        let mut runtime = runtime();
+
+        let error = run_scenario(&mut runtime, &scenario).expect_err("scenario should fail");
+        assert_eq!(
+            error,
+            ScenarioRunError::SimCommandFailed {
+                scenario_id: "test_scenarios:scenario/invalid_order".into(),
+                step_index: 3,
+                step_kind: "WaitTicks".into(),
+                source: SimError::EnqueueAfterInitialization
             }
         );
     }
