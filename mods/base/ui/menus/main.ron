@@ -1,0 +1,22 @@
+UiMenu(
+    id: "base:menu/main",
+    root: Container(
+        id: "base:widget/main_menu/root",
+        layout: Vertical,
+        children: [
+            Text(
+                id: "base:widget/main_menu/title",
+                text: "$base.menu.main.title",
+            ),
+            Button(
+                id: "base:widget/main_menu/settings",
+                text: "$base.menu.main.settings",
+                action: OpenMenu("base:menu/settings"),
+            ),
+            ExtensionPoint(
+                id: "base:widget/main_menu/actions_slot",
+                extension_point: "base:ui_ext/main_menu/actions",
+            ),
+        ],
+    ),
+)

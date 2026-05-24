@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Once;
 use std::time::Duration;
@@ -13,6 +13,10 @@ use bevy::window::{Window, WindowPlugin};
 use flux_core::PrototypeId;
 use flux_mod_loader::DiscoveredMod;
 use flux_sim::SimRuntime;
+use flux_ui::{
+    BuiltinUiActionDispatcher, ContainerLayout, UiAction, UiActionContext, UiActionDispatcher,
+    UiActionResult, UiMenuDefinition, UiMenuId, WidgetKind, WidgetNode,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RunMode {
@@ -32,6 +36,27 @@ enum CliError {
     MissingArgumentValue(&'static str),
     InvalidScenarioId(String),
 }
+
+#[derive(Component)]
+struct FluxUiRoot;
+
+#[derive(Component, Clone)]
+struct FluxUiButtonAction(UiAction);
+
+#[derive(Resource)]
+struct FluxUiState {
+    registry: flux_ui::UiRegistry,
+    dispatcher: BuiltinUiActionDispatcher,
+    known_menus: BTreeSet<UiMenuId>,
+    needs_rebuild: bool,
+}
+
+type UiButtonInteractions<'w, 's> = Query<
+    'w,
+    's,
+    (&'static Interaction, &'static FluxUiButtonAction),
+    (Changed<Interaction>, With<Button>),
+>;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -160,7 +185,18 @@ fn run_windowed() {
                 ..Default::default()
             }),
     );
-    app.add_systems(Startup, windowed_diagnostics);
+    app.add_systems(
+        Startup,
+        (
+            windowed_diagnostics,
+            setup_primary_ui_camera,
+            setup_flux_ui_runtime,
+        ),
+    );
+    app.add_systems(
+        Update,
+        (handle_ui_button_interactions, rebuild_flux_ui_if_needed),
+    );
     app.run();
 }
 
@@ -186,6 +222,230 @@ fn windowed_diagnostics() {
 fn headless_diagnostics() {
     info!("startup mode=headless engine={}", flux_core::engine_label());
     info!("headless diagnostics initialized");
+}
+
+fn setup_primary_ui_camera(mut commands: Commands) {
+    commands.spawn(Camera2d);
+    info!("ui camera initialized");
+}
+
+fn setup_flux_ui_runtime(mut commands: Commands) {
+    let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
+    if !report.errors.is_empty() {
+        for error in &report.errors {
+            error!("ui startup skipped: {error}");
+        }
+        return;
+    }
+
+    let resolved_order = match report.resolved_order.as_ref() {
+        Some(order) => order,
+        None => {
+            error!("ui startup skipped: resolved mod order is missing");
+            return;
+        }
+    };
+
+    let ui_report = flux_ui::load_ui_registry(&report.valid_mods, resolved_order);
+    if !ui_report.errors.is_empty() {
+        for error in &ui_report.errors {
+            error!("ui startup skipped: {error}");
+        }
+        return;
+    }
+
+    let registry = match ui_report.registry {
+        Some(registry) => registry,
+        None => {
+            error!("ui startup skipped: ui registry is missing");
+            return;
+        }
+    };
+
+    let known_menus = registry.menu_ids();
+    info!("ui registry loaded: menus={}", known_menus.len());
+    let initial_menu = match known_menus.first() {
+        Some(menu_id) => menu_id.clone(),
+        None => {
+            warn!("ui startup skipped: no menus were loaded");
+            return;
+        }
+    };
+    info!("ui initial menu: {}", initial_menu);
+
+    commands.insert_resource(FluxUiState {
+        registry,
+        dispatcher: BuiltinUiActionDispatcher::new(initial_menu),
+        known_menus,
+        needs_rebuild: true,
+    });
+}
+
+fn handle_ui_button_interactions(
+    ui_state: Option<ResMut<FluxUiState>>,
+    interactions: UiButtonInteractions<'_, '_>,
+) {
+    let Some(mut ui_state) = ui_state else {
+        return;
+    };
+
+    for (interaction, button_action) in &interactions {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        let known_menus = ui_state.known_menus.clone();
+        let mut diagnostic_logger = |message: &str| info!("ui action log: {message}");
+        let mut context = UiActionContext {
+            known_menus: &known_menus,
+            diagnostic_log: &mut diagnostic_logger,
+        };
+
+        match ui_state.dispatcher.dispatch(&button_action.0, &mut context) {
+            Ok(UiActionResult::MenuChanged) => {
+                ui_state.needs_rebuild = true;
+            }
+            Ok(UiActionResult::Noop) => {}
+            Err(error) => error!("ui action dispatch failed: {error}"),
+        }
+    }
+}
+
+fn rebuild_flux_ui_if_needed(
+    mut commands: Commands,
+    ui_state: Option<ResMut<FluxUiState>>,
+    existing_roots: Query<Entity, With<FluxUiRoot>>,
+) {
+    let Some(mut ui_state) = ui_state else {
+        return;
+    };
+    if !ui_state.needs_rebuild {
+        return;
+    }
+
+    for entity in &existing_roots {
+        commands.entity(entity).despawn();
+    }
+
+    let current_menu_id = ui_state.dispatcher.menu_stack().current().clone();
+    let Some(menu_definition) = ui_state.registry.menu(&current_menu_id) else {
+        error!("ui rebuild skipped: current menu not found ({current_menu_id})");
+        ui_state.needs_rebuild = false;
+        return;
+    };
+
+    spawn_menu_ui(&mut commands, menu_definition);
+    ui_state.needs_rebuild = false;
+}
+
+fn spawn_menu_ui(commands: &mut Commands, menu: &UiMenuDefinition) {
+    let root_entity = commands
+        .spawn((
+            FluxUiRoot,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(8.0),
+                ..Default::default()
+            },
+            BackgroundColor(Color::srgb(0.02, 0.02, 0.03)),
+        ))
+        .id();
+
+    spawn_widget_tree(commands, root_entity, &menu.root);
+}
+
+fn spawn_widget_tree(commands: &mut Commands, parent_entity: Entity, node: &WidgetNode) {
+    let widget_entity = match &node.kind {
+        WidgetKind::Container(container) => {
+            let flex_direction = match container.layout {
+                ContainerLayout::Vertical => FlexDirection::Column,
+                ContainerLayout::Horizontal => FlexDirection::Row,
+            };
+            commands
+                .spawn((
+                    Node {
+                        flex_direction,
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        row_gap: Val::Px(8.0),
+                        column_gap: Val::Px(8.0),
+                        ..Default::default()
+                    },
+                    Name::new(node.id.to_string()),
+                ))
+                .id()
+        }
+        WidgetKind::Text(text) => commands
+            .spawn((
+                Text::new(text.text.as_str().to_owned()),
+                TextFont {
+                    font_size: 28.0,
+                    ..Default::default()
+                },
+                TextColor(Color::WHITE),
+                Name::new(node.id.to_string()),
+            ))
+            .id(),
+        WidgetKind::Button(button) => {
+            let button_entity = commands
+                .spawn((
+                    Button,
+                    Node {
+                        border: UiRect::all(Val::Px(2.0)),
+                        padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                        min_width: Val::Px(280.0),
+                        min_height: Val::Px(52.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..Default::default()
+                    },
+                    BorderColor::all(Color::WHITE),
+                    BackgroundColor(Color::srgb(0.24, 0.46, 0.85)),
+                    FluxUiButtonAction(button.action.clone()),
+                    Name::new(node.id.to_string()),
+                ))
+                .id();
+            let label_entity = commands
+                .spawn((
+                    Text::new(button.text.as_str().to_owned()),
+                    TextFont {
+                        font_size: 22.0,
+                        ..Default::default()
+                    },
+                    TextColor(Color::WHITE),
+                ))
+                .id();
+            commands.entity(button_entity).add_child(label_entity);
+            button_entity
+        }
+        WidgetKind::ExtensionPoint(_) => commands
+            .spawn((
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(8.0),
+                    ..Default::default()
+                },
+                Name::new(node.id.to_string()),
+            ))
+            .id(),
+    };
+
+    commands.entity(parent_entity).add_child(widget_entity);
+
+    if matches!(
+        node.kind,
+        WidgetKind::Container(_) | WidgetKind::ExtensionPoint(_)
+    ) {
+        for child in &node.children {
+            spawn_widget_tree(commands, widget_entity, child);
+        }
+    }
 }
 
 fn run_list_mods() -> i32 {

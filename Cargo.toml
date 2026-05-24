@@ -5,6 +5,7 @@ members = [
     "crates/flux_app",
     "crates/flux_mod_loader",
     "crates/flux_content",
+    "crates/flux_ui",
     "crates/flux_world",
     "crates/flux_sim",
     "crates/flux_scenario",
@@ -19,6 +20,7 @@ authors = ["FluxEngine developers"]
 flux_core = { path = "crates/flux_core" }
 flux_mod_loader = { path = "crates/flux_mod_loader" }
 flux_content = { path = "crates/flux_content" }
+flux_ui = { path = "crates/flux_ui" }
 flux_world = { path = "crates/flux_world" }
 flux_sim = { path = "crates/flux_sim" }
 flux_scenario = { path = "crates/flux_scenario" }

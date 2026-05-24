@@ -1,0 +1,18 @@
+UiMenu(
+    id: "base:menu/settings",
+    root: Container(
+        id: "base:widget/settings_menu/root",
+        layout: Vertical,
+        children: [
+            Text(
+                id: "base:widget/settings_menu/title",
+                text: "$base.menu.settings.title",
+            ),
+            Button(
+                id: "base:widget/settings_menu/back",
+                text: "$base.menu.settings.back",
+                action: BackMenu,
+            ),
+        ],
+    ),
+)

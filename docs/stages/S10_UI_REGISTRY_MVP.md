@@ -28,7 +28,7 @@ pub enum UiDefinition {
     // future: Overlay(...),
 }
 ```
-В S09 реализуется только: `UiDefinition::Menu`
+В S10 реализуется только: `UiDefinition::Menu`
 
 Но код не должен называться/строиться так, будто весь UI всегда является меню.
 
@@ -46,7 +46,6 @@ pub struct UiMenuDefinition {
 ```rust
 pub struct UiMenuId(pub NamespacedId);
 pub struct UiWidgetId(pub NamespacedId);
-pub struct UiActionId(pub NamespacedId);
 pub struct UiExtensionPointId(pub NamespacedId);
 ```
 
@@ -70,7 +69,7 @@ pub struct WidgetNode {
 ```rust
 pub enum UiAction {
     OpenMenu(UiMenuId),
-    Back,
+    BackMenu,
     DiagnosticLog(String),
 }
 ```
@@ -165,31 +164,29 @@ UiExtension -> добавляет widget в slot
 
 ## Кнопки и действия
 
-Кнопка содержит UiActionId.
+Кнопка содержит объект `UiAction`.
 ```rust
 pub struct ButtonWidget {
     pub text: LocalizationKey,
-    pub action: UiActionId,
+    pub action: UiAction,
 }
-
-pub struct UiActionId(pub NamespacedId);
 ```
 
-Кнопка не содержит callback, функцию или enum действия.
+Кнопка не содержит callback или функцию.
 
-При нажатии кнопки runtime отправляет UiActionId в UiActionDispatcher.
+При нажатии кнопки runtime отправляет `UiAction` в `UiActionDispatcher`.
 
 ```rust
 pub trait UiActionDispatcher {
     fn dispatch(
         &mut self,
-        action: &UiActionId,
+        action: &UiAction,
         context: &UiActionContext,
     ) -> UiActionResult;
 }
 ```
 
-В S09 достаточно реализовать builtin action handlers для:
+В S10 достаточно реализовать builtin action handlers для:
 - открытия другого меню
 - возврат в предыдущее меню
 - diagnostic logging
@@ -209,23 +206,18 @@ Action system не должна быть menu-only. В будущем actions д
 Button(
     id: "base:widget/main_menu/settings",
     text: "$base.menu.settings",
-    action: "base:action/open_settings_menu",
+    action: OpenMenu("base:menu/settings"),
 )
 ```
 
-Пример регистрации builtin action:
+Пример builtin action в кнопке:
 ```rust
-dispatcher.register(
-    "base:action/open_settings_menu",
-    BuiltinAction::OpenMenu(
-        "base:menu/settings",
-    ),
-);
+UiAction::OpenMenu(UiMenuId(NamespacedId::parse("base:menu/settings")?))
 ```
 
 ## Bevy adapter
 
-В S09 adapter обязан уметь только: `UiMenuDefinition -> Bevy UI entities`
+В S10 adapter обязан уметь только: `UiMenuDefinition -> Bevy UI entities`
 
 Но интерфейс лучше назвать нейтрально:
 ```
@@ -238,8 +230,9 @@ UiHostRuntime
 
 1. Запустить app.
 2. Увидеть базовое меню.
-3. Добавить мод, добавляющий новое меню и расширяющий текущее меню новой кнопкой, которая открывает новое меню.
-4. Убедиться, что новая кнопка появилась и она открывает новое меню.
+3. Убедиться, что загружен `mods/example_ui`, который расширяет main menu новой кнопкой `example_ui:widget/main_menu/open_debug`.
+4. Нажать новую кнопку и убедиться, что открывается `example_ui:menu/debug`.
+5. Нажать кнопку BackMenu в debug-меню и убедиться, что показывается предыдущее меню из стэка.
 
 
 ## Automated checks

@@ -16,4 +16,5 @@ flux_core.workspace = true
 flux_mod_loader.workspace = true
 flux_scenario.workspace = true
 flux_sim.workspace = true
+flux_ui.workspace = true
 flux_world.workspace = true
