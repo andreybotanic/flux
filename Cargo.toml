@@ -6,6 +6,7 @@ members = [
     "crates/flux_mod_loader",
     "crates/flux_content",
     "crates/flux_world",
+    "crates/flux_sim",
 ]
 
 [workspace.package]
@@ -18,6 +19,7 @@ flux_core = { path = "crates/flux_core" }
 flux_mod_loader = { path = "crates/flux_mod_loader" }
 flux_content = { path = "crates/flux_content" }
 flux_world = { path = "crates/flux_world" }
+flux_sim = { path = "crates/flux_sim" }
 
 [profile.dev]
 debug = true

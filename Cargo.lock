@@ -2261,6 +2261,7 @@ dependencies = [
  "flux_content",
  "flux_core",
  "flux_mod_loader",
+ "flux_sim",
  "flux_world",
 ]
 
@@ -2296,6 +2297,14 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "toml",
+]
+
+[[package]]
+name = "flux_sim"
+version = "0.0.0"
+dependencies = [
+ "flux_world",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

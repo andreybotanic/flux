@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::time::Duration;
 
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -9,7 +10,8 @@ use bevy::render::RenderPlugin;
 use bevy::render::settings::{InstanceFlags, RenderCreation, WgpuSettings};
 use bevy::window::{Window, WindowPlugin};
 use flux_mod_loader::DiscoveredMod;
-use flux_world::{GridSize, WorldGrid};
+use flux_sim::{SimCommand, SimEvent, SimRuntime};
+use flux_world::GridSize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RunMode {
@@ -343,13 +345,29 @@ fn run_list_content() -> i32 {
 }
 
 fn run_world_debug_create(size: GridSize, chunk_size: u32) -> i32 {
-    let mut world = match WorldGrid::new(size, chunk_size) {
-        Ok(world) => world,
+    const DEBUG_FIXED_STEP: Duration = Duration::from_millis(16);
+    const DEBUG_WAIT_TICKS: u64 = 5;
+    const DEBUG_SEED: u64 = 1;
+
+    let mut runtime = match SimRuntime::new(DEBUG_FIXED_STEP, chunk_size) {
+        Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("failed to create world: {error}");
+            eprintln!("failed to initialize simulation runtime: {error}");
             return 1;
         }
     };
+    runtime.enqueue_command(SimCommand::CreateWorld {
+        width: size.width,
+        height: size.height,
+        seed: DEBUG_SEED,
+    });
+    runtime.enqueue_command(SimCommand::WaitTicks {
+        ticks: DEBUG_WAIT_TICKS,
+    });
+    if let Err(error) = runtime.process_queued_commands() {
+        eprintln!("failed to run simulation commands: {error}");
+        return 1;
+    }
 
     let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
     if report.errors.is_empty() {
@@ -357,7 +375,9 @@ fn run_world_debug_create(size: GridSize, chunk_size: u32) -> i32 {
             let content_report =
                 flux_content::load_content_registry(&report.valid_mods, resolved_order);
             if content_report.errors.is_empty() {
-                if let Some(registry) = content_report.registry.as_ref() {
+                if let Some(registry) = content_report.registry.as_ref()
+                    && let Some(world) = runtime.world_mut()
+                {
                     let count = world.refresh_structure_sizes_from_registry(registry);
                     println!("structure prototype sizes loaded: {count}");
                 }
@@ -375,6 +395,10 @@ fn run_world_debug_create(size: GridSize, chunk_size: u32) -> i32 {
         );
     }
 
+    let Some(world) = runtime.world() else {
+        eprintln!("simulation runtime did not create a world");
+        return 1;
+    };
     println!(
         "world summary: size={}x{} cells={} chunk_size={} chunks={} chunk_grid={}x{}",
         world.size().width,
@@ -385,7 +409,29 @@ fn run_world_debug_create(size: GridSize, chunk_size: u32) -> i32 {
         world.chunk_cols(),
         world.chunk_rows()
     );
+    println!(
+        "sim summary: tick_counter={} fixed_step_ms={} seed={}",
+        runtime.tick_counter(),
+        runtime.fixed_tick().step().as_millis(),
+        runtime.world_seed().unwrap_or_default()
+    );
+    print_sim_events(runtime.events().iter());
     0
+}
+
+fn print_sim_events<'a>(events: impl Iterator<Item = &'a SimEvent>) {
+    println!("sim events:");
+    for event in events {
+        match event {
+            SimEvent::WorldCreated {
+                width,
+                height,
+                seed,
+            } => {
+                println!("- kind=WorldCreated width={width} height={height} seed={seed}");
+            }
+        }
+    }
 }
 
 fn print_patch_trail(
