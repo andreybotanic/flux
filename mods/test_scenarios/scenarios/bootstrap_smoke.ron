@@ -1,0 +1,10 @@
+Scenario(
+    id: "test_scenarios:scenario/bootstrap_smoke",
+    steps: [
+        Log("scenario started"),
+        CreateWorld(width: 64, height: 64, seed: 0),
+        WaitTicks(5),
+        AssertTick(5),
+        Log("scenario finished"),
+    ],
+)

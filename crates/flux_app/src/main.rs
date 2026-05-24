@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Once;
 use std::time::Duration;
 
 use bevy::log::LogPlugin;
@@ -9,16 +10,17 @@ use bevy::prelude::*;
 use bevy::render::RenderPlugin;
 use bevy::render::settings::{InstanceFlags, RenderCreation, WgpuSettings};
 use bevy::window::{Window, WindowPlugin};
+use flux_core::PrototypeId;
 use flux_mod_loader::DiscoveredMod;
-use flux_sim::{SimCommand, SimEvent, SimRuntime};
-use flux_world::GridSize;
+use flux_sim::SimRuntime;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum RunMode {
     Version,
     ListMods,
     ListContent,
-    WorldDebugCreate { size: GridSize, chunk_size: u32 },
+    ListScenarios,
+    RunScenario { scenario_id: PrototypeId },
     Windowed,
     Headless,
 }
@@ -28,9 +30,7 @@ enum CliError {
     UnknownArgument(String),
     ConflictingArguments,
     MissingArgumentValue(&'static str),
-    InvalidWorldSize(String),
-    InvalidChunkSize(String),
-    ChunkSizeWithoutWorldDebug,
+    InvalidScenarioId(String),
 }
 
 fn main() {
@@ -55,8 +55,12 @@ fn main() {
             let exit_code = run_list_content();
             std::process::exit(exit_code);
         }
-        RunMode::WorldDebugCreate { size, chunk_size } => {
-            let exit_code = run_world_debug_create(size, chunk_size);
+        RunMode::ListScenarios => {
+            let exit_code = run_list_scenarios();
+            std::process::exit(exit_code);
+        }
+        RunMode::RunScenario { scenario_id } => {
+            let exit_code = run_scenario_by_id(&scenario_id);
             std::process::exit(exit_code);
         }
         RunMode::Windowed => run_windowed(),
@@ -69,8 +73,8 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
     let mut wants_headless = false;
     let mut wants_list_mods = false;
     let mut wants_list_content = false;
-    let mut world_size: Option<GridSize> = None;
-    let mut chunk_size: Option<u32> = None;
+    let mut wants_list_scenarios = false;
+    let mut scenario_id: Option<PrototypeId> = None;
 
     let mut index = 0usize;
     while index < args.len() {
@@ -80,24 +84,14 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
             "--headless" => wants_headless = true,
             "--list-mods" => wants_list_mods = true,
             "--list-content" => wants_list_content = true,
-            "--world-debug-create" => {
+            "--list-scenarios" => wants_list_scenarios = true,
+            "--run-scenario" => {
                 let value = args
                     .get(index + 1)
-                    .ok_or(CliError::MissingArgumentValue("--world-debug-create"))?;
-                world_size = Some(parse_world_size(value)?);
-                index += 1;
-            }
-            "--chunk-size" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or(CliError::MissingArgumentValue("--chunk-size"))?;
-                let parsed = value
-                    .parse::<u32>()
-                    .map_err(|_| CliError::InvalidChunkSize(value.clone()))?;
-                if parsed == 0 {
-                    return Err(CliError::InvalidChunkSize(value.clone()));
-                }
-                chunk_size = Some(parsed);
+                    .ok_or(CliError::MissingArgumentValue("--run-scenario"))?;
+                let parsed = PrototypeId::parse(value)
+                    .map_err(|_| CliError::InvalidScenarioId(value.clone()))?;
+                scenario_id = Some(parsed);
                 index += 1;
             }
             other => return Err(CliError::UnknownArgument(other.to_owned())),
@@ -105,15 +99,12 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
         index += 1;
     }
 
-    if chunk_size.is_some() && world_size.is_none() {
-        return Err(CliError::ChunkSizeWithoutWorldDebug);
-    }
-
     let selected_modes = usize::from(wants_version)
         + usize::from(wants_headless)
         + usize::from(wants_list_mods)
         + usize::from(wants_list_content)
-        + usize::from(world_size.is_some());
+        + usize::from(wants_list_scenarios)
+        + usize::from(scenario_id.is_some());
 
     if selected_modes > 1 {
         return Err(CliError::ConflictingArguments);
@@ -131,11 +122,12 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
         return Ok(RunMode::ListContent);
     }
 
-    if let Some(size) = world_size {
-        return Ok(RunMode::WorldDebugCreate {
-            size,
-            chunk_size: chunk_size.unwrap_or(16),
-        });
+    if wants_list_scenarios {
+        return Ok(RunMode::ListScenarios);
+    }
+
+    if let Some(scenario_id) = scenario_id {
+        return Ok(RunMode::RunScenario { scenario_id });
     }
 
     if wants_headless {
@@ -143,22 +135,6 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
     }
 
     Ok(RunMode::Windowed)
-}
-
-fn parse_world_size(value: &str) -> Result<GridSize, CliError> {
-    let Some((width_raw, height_raw)) = value.split_once('x') else {
-        return Err(CliError::InvalidWorldSize(value.to_owned()));
-    };
-    let width = width_raw
-        .parse::<u32>()
-        .map_err(|_| CliError::InvalidWorldSize(value.to_owned()))?;
-    let height = height_raw
-        .parse::<u32>()
-        .map_err(|_| CliError::InvalidWorldSize(value.to_owned()))?;
-    if width == 0 || height == 0 {
-        return Err(CliError::InvalidWorldSize(value.to_owned()));
-    }
-    Ok(GridSize::new(width, height))
 }
 
 fn run_windowed() {
@@ -344,92 +320,133 @@ fn run_list_content() -> i32 {
     0
 }
 
-fn run_world_debug_create(size: GridSize, chunk_size: u32) -> i32 {
-    const DEBUG_FIXED_STEP: Duration = Duration::from_millis(16);
-    const DEBUG_WAIT_TICKS: u64 = 5;
-    const DEBUG_SEED: u64 = 1;
+fn run_list_scenarios() -> i32 {
+    let scenarios = match load_scenarios_from_mods() {
+        Ok(scenarios) => scenarios,
+        Err(exit_code) => return exit_code,
+    };
 
-    let mut runtime = match SimRuntime::new(DEBUG_FIXED_STEP, chunk_size) {
+    println!("scenarios: {}", scenarios.len());
+    for scenario in &scenarios {
+        println!(
+            "- id={} steps={} source_mod={} source_file={}",
+            scenario.definition.id,
+            scenario.definition.steps.len(),
+            scenario.source.mod_id,
+            scenario.source.file
+        );
+    }
+
+    0
+}
+
+fn run_scenario_by_id(scenario_id: &PrototypeId) -> i32 {
+    const SCENARIO_FIXED_STEP: Duration = Duration::from_millis(16);
+    const SCENARIO_CHUNK_SIZE: u32 = 16;
+
+    init_cli_bevy_logging();
+
+    let scenarios = match load_scenarios_from_mods() {
+        Ok(scenarios) => scenarios,
+        Err(exit_code) => return exit_code,
+    };
+
+    let scenario = match find_scenario_by_id(&scenarios, scenario_id) {
+        Ok(scenario) => scenario,
+        Err(error) => {
+            eprintln!("{error}");
+            return 1;
+        }
+    };
+
+    let mut runtime = match SimRuntime::new(SCENARIO_FIXED_STEP, SCENARIO_CHUNK_SIZE) {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("failed to initialize simulation runtime: {error}");
             return 1;
         }
     };
-    runtime.enqueue_command(SimCommand::CreateWorld {
-        width: size.width,
-        height: size.height,
-        seed: DEBUG_SEED,
-    });
-    runtime.enqueue_command(SimCommand::WaitTicks {
-        ticks: DEBUG_WAIT_TICKS,
-    });
-    if let Err(error) = runtime.process_queued_commands() {
-        eprintln!("failed to run simulation commands: {error}");
-        return 1;
-    }
 
-    let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
-    if report.errors.is_empty() {
-        if let Some(resolved_order) = report.resolved_order.as_ref() {
-            let content_report =
-                flux_content::load_content_registry(&report.valid_mods, resolved_order);
-            if content_report.errors.is_empty() {
-                if let Some(registry) = content_report.registry.as_ref()
-                    && let Some(world) = runtime.world_mut()
-                {
-                    let count = world.refresh_structure_sizes_from_registry(registry);
-                    println!("structure prototype sizes loaded: {count}");
-                }
-            } else {
-                eprintln!(
-                    "warning: content registry has {} error(s), continuing with empty structure size lookup",
-                    content_report.errors.len()
-                );
-            }
+    match flux_scenario::run_scenario(&mut runtime, &scenario.definition) {
+        Ok(summary) => {
+            info!(
+                "scenario_id={} scenario finished steps={} final_tick={}",
+                summary.scenario_id, summary.executed_steps, summary.final_tick
+            );
+            0
         }
-    } else {
-        eprintln!(
-            "warning: mod discovery has {} error(s), continuing with empty structure size lookup",
-            report.errors.len()
-        );
+        Err(error) => {
+            eprintln!("{error}");
+            1
+        }
     }
-
-    let Some(world) = runtime.world() else {
-        eprintln!("simulation runtime did not create a world");
-        return 1;
-    };
-    println!(
-        "world summary: size={}x{} cells={} chunk_size={} chunks={} chunk_grid={}x{}",
-        world.size().width,
-        world.size().height,
-        world.cell_count(),
-        world.chunk_size(),
-        world.chunks().len(),
-        world.chunk_cols(),
-        world.chunk_rows()
-    );
-    println!(
-        "sim summary: tick_counter={} fixed_step_ms={} seed={}",
-        runtime.tick_counter(),
-        runtime.fixed_tick().step().as_millis(),
-        runtime.world_seed().unwrap_or_default()
-    );
-    print_sim_events(runtime.events().iter());
-    0
 }
 
-fn print_sim_events<'a>(events: impl Iterator<Item = &'a SimEvent>) {
-    println!("sim events:");
-    for event in events {
-        match event {
-            SimEvent::WorldCreated {
-                width,
-                height,
-                seed,
-            } => {
-                println!("- kind=WorldCreated width={width} height={height} seed={seed}");
-            }
+fn init_cli_bevy_logging() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        use bevy::log::tracing_subscriber::prelude::*;
+
+        let env_filter = bevy::log::tracing_subscriber::EnvFilter::new("info,wgpu=warn,naga=warn");
+        let fmt_layer = bevy::log::tracing_subscriber::fmt::layer();
+        let subscriber = bevy::log::tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer);
+        bevy::log::tracing::subscriber::set_global_default(subscriber)
+            .expect("bevy tracing subscriber should initialize once");
+    });
+}
+
+fn load_scenarios_from_mods() -> Result<Vec<flux_scenario::LoadedScenario>, i32> {
+    let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
+    if !report.errors.is_empty() {
+        eprintln!("errors: {}", report.errors.len());
+        for error in &report.errors {
+            eprintln!("{error}");
+        }
+        return Err(1);
+    }
+
+    let resolved_order = report
+        .resolved_order
+        .as_ref()
+        .expect("resolved order must exist when there are no mod errors");
+    let scenario_report = flux_scenario::load_scenarios(&report.valid_mods, resolved_order);
+    if !scenario_report.errors.is_empty() {
+        eprintln!("errors: {}", scenario_report.errors.len());
+        for error in &scenario_report.errors {
+            eprintln!("{error}");
+        }
+        return Err(1);
+    }
+
+    Ok(scenario_report.scenarios)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ScenarioLookupError {
+    NotFound { scenario_id: String },
+}
+
+fn find_scenario_by_id<'a>(
+    scenarios: &'a [flux_scenario::LoadedScenario],
+    scenario_id: &PrototypeId,
+) -> Result<&'a flux_scenario::LoadedScenario, ScenarioLookupError> {
+    scenarios
+        .iter()
+        .find(|candidate| candidate.definition.id == *scenario_id)
+        .ok_or_else(|| ScenarioLookupError::NotFound {
+            scenario_id: scenario_id.to_string(),
+        })
+}
+
+impl std::fmt::Display for ScenarioLookupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScenarioLookupError::NotFound { scenario_id } => write!(
+                f,
+                "ScenarioRunError:\n  action: run_scenario\n  scenario_id: {scenario_id}\n  reason: scenario not found"
+            ),
         }
     }
 }
@@ -472,31 +489,22 @@ impl std::fmt::Display for CliError {
             CliError::UnknownArgument(argument) => {
                 write!(
                     f,
-                    "unknown argument: {argument}. Supported args: --version, -V, --headless, --list-mods, --list-content, --world-debug-create <WxH>, --chunk-size <N>"
+                    "unknown argument: {argument}. Supported args: --version, -V, --headless, --list-mods, --list-content, --list-scenarios, --run-scenario <id>"
                 )
             }
             CliError::ConflictingArguments => {
                 write!(
                     f,
-                    "arguments --version, --headless, --list-mods, --list-content, and --world-debug-create are mutually exclusive"
+                    "arguments --version, --headless, --list-mods, --list-content, --list-scenarios, and --run-scenario are mutually exclusive"
                 )
             }
             CliError::MissingArgumentValue(flag) => {
                 write!(f, "missing value for argument {flag}")
             }
-            CliError::InvalidWorldSize(value) => {
+            CliError::InvalidScenarioId(value) => {
                 write!(
                     f,
-                    "invalid world size `{value}`, expected format WxH with positive integers"
-                )
-            }
-            CliError::InvalidChunkSize(value) => {
-                write!(f, "invalid chunk size `{value}`, expected positive integer")
-            }
-            CliError::ChunkSizeWithoutWorldDebug => {
-                write!(
-                    f,
-                    "argument --chunk-size can only be used with --world-debug-create"
+                    "invalid scenario id `{value}`, expected namespace:path format"
                 )
             }
         }
@@ -506,6 +514,9 @@ impl std::fmt::Display for CliError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flux_scenario::{
+        LoadedScenario, ScenarioDefinition, ScenarioSource, ScenarioStep, WaitTicksStep,
+    };
 
     #[test]
     fn parses_version_flag() {
@@ -541,24 +552,23 @@ mod tests {
     }
 
     #[test]
-    fn parses_world_debug_create_flag() {
+    fn parses_list_scenarios_flag() {
         assert_eq!(
-            parse_run_mode(&["--world-debug-create".to_owned(), "64x64".to_owned()]),
-            Ok(RunMode::WorldDebugCreate {
-                size: GridSize::new(64, 64),
-                chunk_size: 16
-            })
+            parse_run_mode(&["--list-scenarios".to_owned()]),
+            Ok(RunMode::ListScenarios)
         );
+    }
+
+    #[test]
+    fn parses_run_scenario_flag() {
         assert_eq!(
             parse_run_mode(&[
-                "--world-debug-create".to_owned(),
-                "64x64".to_owned(),
-                "--chunk-size".to_owned(),
-                "8".to_owned()
+                "--run-scenario".to_owned(),
+                "test_scenarios:scenario/bootstrap_smoke".to_owned()
             ]),
-            Ok(RunMode::WorldDebugCreate {
-                size: GridSize::new(64, 64),
-                chunk_size: 8
+            Ok(RunMode::RunScenario {
+                scenario_id: PrototypeId::parse("test_scenarios:scenario/bootstrap_smoke")
+                    .expect("valid id")
             })
         );
     }
@@ -596,8 +606,8 @@ mod tests {
         );
         assert_eq!(
             parse_run_mode(&[
-                "--world-debug-create".to_owned(),
-                "32x32".to_owned(),
+                "--run-scenario".to_owned(),
+                "test_scenarios:scenario/bootstrap_smoke".to_owned(),
                 "--headless".to_owned()
             ]),
             Err(CliError::ConflictingArguments)
@@ -605,18 +615,43 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_world_debug_arguments() {
+    fn rejects_invalid_run_scenario_arguments() {
         assert_eq!(
-            parse_run_mode(&["--world-debug-create".to_owned()]),
-            Err(CliError::MissingArgumentValue("--world-debug-create"))
+            parse_run_mode(&["--run-scenario".to_owned()]),
+            Err(CliError::MissingArgumentValue("--run-scenario"))
         );
         assert_eq!(
-            parse_run_mode(&["--world-debug-create".to_owned(), "64".to_owned()]),
-            Err(CliError::InvalidWorldSize("64".to_owned()))
+            parse_run_mode(&["--run-scenario".to_owned(), "invalid".to_owned()]),
+            Err(CliError::InvalidScenarioId("invalid".to_owned()))
         );
+    }
+
+    #[test]
+    fn reports_nonexistent_scenario_id() {
+        let scenarios = vec![LoadedScenario {
+            definition: ScenarioDefinition {
+                id: PrototypeId::parse("test_scenarios:scenario/bootstrap_smoke").expect("id"),
+                steps: vec![ScenarioStep::WaitTicksStep(WaitTicksStep(1))],
+            },
+            source: ScenarioSource {
+                mod_id: "test_scenarios".to_owned(),
+                file: "mods/test_scenarios/scenarios/bootstrap_smoke.ron".to_owned(),
+            },
+        }];
+        let missing_id =
+            PrototypeId::parse("test_scenarios:scenario/does_not_exist").expect("valid id");
+
+        let error = find_scenario_by_id(&scenarios, &missing_id).expect_err("must be missing");
         assert_eq!(
-            parse_run_mode(&["--chunk-size".to_owned(), "16".to_owned()]),
-            Err(CliError::ChunkSizeWithoutWorldDebug)
+            error,
+            ScenarioLookupError::NotFound {
+                scenario_id: "test_scenarios:scenario/does_not_exist".to_owned()
+            }
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("scenario_id: test_scenarios:scenario/does_not_exist")
         );
     }
 }

@@ -8,6 +8,7 @@ use crate::{CommandQueue, EventQueue, FixedTick, SimCommand, SimError, SimEvent}
 pub struct SimRuntime {
     fixed_tick: FixedTick,
     chunk_size: u32,
+    initialized: bool,
     tick_counter: u64,
     world: Option<WorldGrid>,
     world_seed: Option<u64>,
@@ -24,6 +25,7 @@ impl SimRuntime {
         Ok(Self {
             fixed_tick: FixedTick::new(fixed_step)?,
             chunk_size,
+            initialized: false,
             tick_counter: 0,
             world: None,
             world_seed: None,
@@ -45,6 +47,11 @@ impl SimRuntime {
     #[must_use]
     pub fn tick_counter(&self) -> u64 {
         self.tick_counter
+    }
+
+    #[must_use]
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
     }
 
     #[must_use]
@@ -72,11 +79,24 @@ impl SimRuntime {
         &self.events
     }
 
-    pub fn enqueue_command(&mut self, command: SimCommand) {
+    pub fn enqueue_command(&mut self, command: SimCommand) -> Result<(), SimError> {
+        if self.initialized {
+            return Err(SimError::EnqueueAfterInitialization);
+        }
         self.commands.enqueue(command);
+        Ok(())
     }
 
-    pub fn process_queued_commands(&mut self) -> Result<(), SimError> {
+    pub fn initialize(&mut self) -> Result<(), SimError> {
+        if self.initialized {
+            return Err(SimError::RuntimeAlreadyInitialized);
+        }
+        self.process_queued_commands()?;
+        self.initialized = true;
+        Ok(())
+    }
+
+    fn process_queued_commands(&mut self) -> Result<(), SimError> {
         while let Some(command) = self.commands.dequeue() {
             self.process_command(command)?;
         }
@@ -159,16 +179,18 @@ mod tests {
     #[test]
     fn wait_ticks_advances_counter_deterministically() {
         let mut runtime = runtime();
-        runtime.enqueue_command(SimCommand::CreateWorld {
-            width: 64,
-            height: 64,
-            seed: 7,
-        });
-        runtime.enqueue_command(SimCommand::WaitTicks { ticks: 5 });
-
         runtime
-            .process_queued_commands()
-            .expect("commands should be processed");
+            .enqueue_command(SimCommand::CreateWorld {
+                width: 64,
+                height: 64,
+                seed: 7,
+            })
+            .expect("enqueue should succeed");
+        runtime
+            .enqueue_command(SimCommand::WaitTicks { ticks: 5 })
+            .expect("enqueue should succeed");
+
+        runtime.initialize().expect("commands should be processed");
 
         assert_eq!(runtime.tick_counter(), 5);
     }
@@ -176,14 +198,14 @@ mod tests {
     #[test]
     fn create_world_emits_world_created_event_once() {
         let mut runtime = runtime();
-        runtime.enqueue_command(SimCommand::CreateWorld {
-            width: 64,
-            height: 64,
-            seed: 123,
-        });
         runtime
-            .process_queued_commands()
-            .expect("command should succeed");
+            .enqueue_command(SimCommand::CreateWorld {
+                width: 64,
+                height: 64,
+                seed: 123,
+            })
+            .expect("enqueue should succeed");
+        runtime.initialize().expect("command should succeed");
 
         let events = runtime.events().iter().cloned().collect::<Vec<_>>();
         assert_eq!(events.len(), 1);
@@ -200,17 +222,21 @@ mod tests {
     #[test]
     fn command_processing_is_fifo_for_mixed_commands() {
         let mut runtime = runtime();
-        runtime.enqueue_command(SimCommand::WaitTicks { ticks: 2 });
-        runtime.enqueue_command(SimCommand::CreateWorld {
-            width: 8,
-            height: 8,
-            seed: 1,
-        });
-        runtime.enqueue_command(SimCommand::WaitTicks { ticks: 3 });
-
         runtime
-            .process_queued_commands()
-            .expect("commands should be processed");
+            .enqueue_command(SimCommand::WaitTicks { ticks: 2 })
+            .expect("enqueue should succeed");
+        runtime
+            .enqueue_command(SimCommand::CreateWorld {
+                width: 8,
+                height: 8,
+                seed: 1,
+            })
+            .expect("enqueue should succeed");
+        runtime
+            .enqueue_command(SimCommand::WaitTicks { ticks: 3 })
+            .expect("enqueue should succeed");
+
+        runtime.initialize().expect("commands should be processed");
 
         assert_eq!(runtime.tick_counter(), 5);
         assert!(runtime.world().is_some());
@@ -220,14 +246,16 @@ mod tests {
     #[test]
     fn invalid_world_size_returns_structured_error_without_success_event() {
         let mut runtime = runtime();
-        runtime.enqueue_command(SimCommand::CreateWorld {
-            width: 0,
-            height: 64,
-            seed: 1,
-        });
+        runtime
+            .enqueue_command(SimCommand::CreateWorld {
+                width: 0,
+                height: 64,
+                seed: 1,
+            })
+            .expect("enqueue should succeed");
 
         let error = runtime
-            .process_queued_commands()
+            .initialize()
             .expect_err("world creation with zero width should fail");
         assert_eq!(
             error,
@@ -238,5 +266,32 @@ mod tests {
         );
         assert!(runtime.events().is_empty());
         assert!(runtime.world().is_none());
+    }
+
+    #[test]
+    fn initialize_is_single_shot() {
+        let mut runtime = runtime();
+        runtime
+            .enqueue_command(SimCommand::WaitTicks { ticks: 1 })
+            .expect("enqueue should succeed");
+        runtime
+            .initialize()
+            .expect("first initialize should succeed");
+
+        let error = runtime
+            .initialize()
+            .expect_err("second initialize should fail");
+        assert_eq!(error, SimError::RuntimeAlreadyInitialized);
+    }
+
+    #[test]
+    fn enqueue_after_initialize_is_rejected() {
+        let mut runtime = runtime();
+        runtime.initialize().expect("initialize should succeed");
+
+        let error = runtime
+            .enqueue_command(SimCommand::WaitTicks { ticks: 1 })
+            .expect_err("enqueue after initialize should fail");
+        assert_eq!(error, SimError::EnqueueAfterInitialization);
     }
 }

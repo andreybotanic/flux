@@ -1,19 +1,22 @@
 [package]
-name = "flux_app"
+name = "flux_scenario"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
-[[bin]]
-name = "flux_app"
-path = "src/main.rs"
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
-bevy = "0.17"
-flux_content.workspace = true
+enum_dispatch = "0.3"
 flux_core.workspace = true
 flux_mod_loader.workspace = true
-flux_scenario.workspace = true
 flux_sim.workspace = true
-flux_world.workspace = true
+ron = "0.8"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
