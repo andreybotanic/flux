@@ -175,7 +175,6 @@ pub(crate) fn populate_world_debug_mvp(
     Ok(())
 }
 
-#[must_use]
 pub(crate) fn build_world_render_snapshot(
     world: &WorldGrid,
     registry: &ContentRegistry,

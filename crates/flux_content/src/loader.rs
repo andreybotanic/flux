@@ -223,6 +223,10 @@ fn apply_mod_patches(
                 }
 
                 seen_targets.insert(patch.target.clone(), source.file.clone());
+                if let Err(error) = validate_patch_visual_assets(module, &patch, &source) {
+                    errors.push(error);
+                    continue;
+                }
                 if let Err(error) = registry.apply_patch(patch, source) {
                     errors.push(error);
                 }
@@ -300,6 +304,7 @@ fn parse_prototype(
 
     validate_prototype_id_namespace(module, file, prototype.id())?;
     validate_prototype_body(&prototype, &source)?;
+    validate_prototype_visual_assets(module, &prototype, &source)?;
 
     Ok((prototype, source))
 }
@@ -366,6 +371,89 @@ fn validate_prototype_body(
     source: &PrototypeSource,
 ) -> Result<(), ContentRegistryError> {
     prototype.validate(source)
+}
+
+fn validate_prototype_visual_assets(
+    module: &DiscoveredMod,
+    prototype: &PrototypeBody,
+    source: &PrototypeSource,
+) -> Result<(), ContentRegistryError> {
+    match prototype {
+        PrototypeBody::SolidCellPrototype(solid) => validate_visual_asset_exists(
+            module,
+            source,
+            &solid.id,
+            "visual.image",
+            solid.visual.image_path().as_str(),
+        ),
+        PrototypeBody::StructurePrototype(structure) => validate_visual_asset_exists(
+            module,
+            source,
+            &structure.id,
+            "visual.image",
+            structure.visual.image_path().as_str(),
+        ),
+        PrototypeBody::SubstancePrototype(_) | PrototypeBody::GasPrototype(_) => Ok(()),
+    }
+}
+
+fn validate_patch_visual_assets(
+    module: &DiscoveredMod,
+    patch: &PrototypePatch,
+    source: &PrototypeSource,
+) -> Result<(), ContentRegistryError> {
+    match &patch.body {
+        PrototypePatchBody::SolidCell(body) => {
+            if let Some(visual) = &body.visual {
+                validate_visual_asset_exists(
+                    module,
+                    source,
+                    &patch.target,
+                    "visual.image",
+                    visual.image_path().as_str(),
+                )?;
+            }
+            Ok(())
+        }
+        PrototypePatchBody::Structure(body) => {
+            if let Some(visual) = &body.visual {
+                validate_visual_asset_exists(
+                    module,
+                    source,
+                    &patch.target,
+                    "visual.image",
+                    visual.image_path().as_str(),
+                )?;
+            }
+            Ok(())
+        }
+        PrototypePatchBody::Substance(_) | PrototypePatchBody::Gas(_) => Ok(()),
+    }
+}
+
+fn validate_visual_asset_exists(
+    module: &DiscoveredMod,
+    source: &PrototypeSource,
+    prototype_id: &PrototypeId,
+    field: &str,
+    image_path: &str,
+) -> Result<(), ContentRegistryError> {
+    let candidate = module.directory_path.join("assets").join(image_path);
+    if candidate.is_file() {
+        return Ok(());
+    }
+
+    Err(ContentRegistryError::InvalidPrototypeField {
+        mod_id: source.mod_id.clone().into(),
+        file: source.file.clone().into(),
+        prototype_id: prototype_id.to_string().into(),
+        field: field.to_owned().into(),
+        reason: format!(
+            "asset file is missing; expected `{}`",
+            candidate.to_string_lossy()
+        )
+        .into(),
+    })
 }
 
 fn validate_prototype_id_namespace(

@@ -2,7 +2,6 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use flux_world::{GridSize, TilePos};
-use std::path::Path;
 
 const WORLD_BACKGROUND_COLOR: Color = Color::srgb(0.09, 0.10, 0.12);
 const WORLD_GRID_COLOR: Color = Color::srgb(0.27, 0.29, 0.33);
@@ -510,7 +509,6 @@ fn sync_sprite_layers(
         }
 
         for cell in &render_state.render_snapshot().solid_cells {
-            ensure_asset_exists(&cell.image_path);
             let mut sprite =
                 Sprite::from_image(asset_server.load(to_bevy_mod_asset_path(&cell.image_path)));
             sprite.custom_size = Some(Vec2::splat(pitch));
@@ -524,7 +522,6 @@ fn sync_sprite_layers(
         }
 
         for structure in &render_state.render_snapshot().structures {
-            ensure_asset_exists(&structure.image_path);
             let mut sprite = Sprite::from_image(
                 asset_server.load(to_bevy_mod_asset_path(&structure.image_path)),
             );
@@ -580,26 +577,6 @@ fn spawn_grid_layer(commands: &mut Commands, grid_size: GridSize, pitch: f32, li
             Name::new("world_grid_line"),
         ));
     }
-}
-
-fn ensure_asset_exists(image_path: &str) {
-    let path = image_path.trim().replace('\\', "/");
-    let Some((namespace, rest)) = path.split_once('/') else {
-        panic!(
-            "WorldSpriteAssetError:\n  asset: {}\n  reason: expected mod-scoped path <mod_id>/<asset_path>",
-            image_path
-        );
-    };
-    let candidate = Path::new("mods").join(namespace).join("assets").join(rest);
-    if candidate.is_file() {
-        return;
-    }
-
-    panic!(
-        "WorldSpriteAssetError:\n  asset: {}\n  tried_path: {}\n  reason: file not found",
-        image_path,
-        candidate.display()
-    );
 }
 
 fn to_bevy_mod_asset_path(image_path: &str) -> String {
@@ -705,7 +682,7 @@ fn cursor_to_world_position(
 mod tests {
     use super::{
         StructureSprite, WorldCameraControlsConfig, clamp_camera_center_to_world_bounds,
-        compute_zoom_bounds, ensure_asset_exists, gas_intensity_from_particles, grid_line_segments,
+        compute_zoom_bounds, gas_intensity_from_particles, grid_line_segments,
         tile_to_world_center,
     };
     use bevy::math::Vec2;
@@ -825,11 +802,5 @@ mod tests {
 
         assert_eq!(center, Vec2::new(5.0, 8.5));
         assert_eq!(size, Vec2::new(2.0, 3.0));
-    }
-
-    #[test]
-    #[should_panic(expected = "WorldSpriteAssetError")]
-    fn missing_asset_panics_fast() {
-        ensure_asset_exists("textures/structure/definitely_missing_for_test.png");
     }
 }

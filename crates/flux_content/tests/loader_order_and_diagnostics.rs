@@ -107,6 +107,7 @@ api_version = "0.1.0"
 base = "*"
 "#,
     );
+    write_test_asset(&mods_root, "base", "textures/structure/test.png");
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
         r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
@@ -143,4 +144,10 @@ base = "*"
 fn write_manifest(path: &Path, manifest: &str) {
     fs::create_dir_all(path.parent().expect("parent dir")).expect("create parent");
     fs::write(path, manifest.trim()).expect("write manifest");
+}
+
+fn write_test_asset(mods_root: &Path, mod_id: &str, relative_path: &str) {
+    let full_path = mods_root.join(mod_id).join("assets").join(relative_path);
+    fs::create_dir_all(full_path.parent().expect("asset parent")).expect("create asset parent");
+    fs::write(full_path, [0u8]).expect("write asset");
 }

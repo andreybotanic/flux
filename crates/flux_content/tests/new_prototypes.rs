@@ -179,6 +179,48 @@ api_version = "0.1.0"
     }));
 }
 
+#[test]
+fn reports_missing_visual_asset_file_with_context() {
+    let temp_dir = TempDir::new().expect("tempdir");
+    let mods_root = temp_dir.path().join("mods");
+    fs::create_dir_all(mods_root.join("base/content/structures")).expect("create dir");
+    write_manifest(
+        &mods_root.join("base/manifest.toml"),
+        r#"
+[mod]
+id = "base"
+version = "1.0.0"
+api_version = "0.1.0"
+"#,
+    );
+    fs::write(
+        mods_root.join("base/content/structures/missing_asset.ron"),
+        r#"StructurePrototype(id: "base:building/missing_asset", display_name: "base.structure.missing_asset", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/missing_asset.png")))"#,
+    )
+    .expect("write file");
+
+    let report = discover_and_resolve_mods(&mods_root);
+    let load_report =
+        load_content_registry(&report.valid_mods, &report.resolved_order.expect("order"));
+
+    assert!(load_report.registry.is_none());
+    assert!(load_report.errors.iter().any(|error| {
+        matches!(
+            error,
+            ContentRegistryError::InvalidPrototypeField {
+                mod_id,
+                file,
+                field,
+                reason,
+                ..
+            } if mod_id.as_ref() == "base"
+                && file.ends_with("missing_asset.ron")
+                && field.as_ref() == "visual.image"
+                && reason.contains("asset file is missing")
+        )
+    }));
+}
+
 fn write_manifest(path: &Path, manifest: &str) {
     fs::create_dir_all(path.parent().expect("parent dir")).expect("create parent");
     fs::write(path, manifest.trim()).expect("write manifest");
