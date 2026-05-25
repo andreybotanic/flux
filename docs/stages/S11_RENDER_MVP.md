@@ -1,4 +1,4 @@
-﻿# S11 — Chunk-based render dirty MVP
+﻿# S11 — World Render MVP + remove dirty chunks
 
 ## Depends on
 

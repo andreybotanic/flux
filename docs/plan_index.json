@@ -335,8 +335,8 @@
     },
     {
       "id": "S11",
-      "title": "Chunk-based render dirty MVP",
-      "file": "docs/stages/S11_RENDER_CHUNK_DIRTY_MVP.md",
+      "title": "Render MVP",
+      "file": "docs/stages/S11_RENDER_MVP.md",
       "depends_on": [
         "S01",
         "S07"
@@ -348,7 +348,7 @@
         "S14"
       ],
       "status": "planned",
-      "goal": "Добавить минимальный рендер мира, где обновления визуала привязаны к dirty chunks."
+      "goal": "Добавить минимальный рендер мира."
     },
     {
       "id": "S12",
