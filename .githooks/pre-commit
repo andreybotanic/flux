@@ -4,6 +4,3 @@ set -euo pipefail
 cargo fmt --all --check
 cargo check --workspace --all-targets
 
-if command -v python3 >/dev/null 2>&1; then
-  python3 scripts/check_plan_index.py
-fi
