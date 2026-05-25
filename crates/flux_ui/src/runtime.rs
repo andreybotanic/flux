@@ -8,6 +8,7 @@ use crate::types::{UiAction, UiMenuId};
 pub enum UiActionResult {
     Noop,
     MenuChanged,
+    RunWorldRequested,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -119,6 +120,7 @@ impl UiActionDispatcher for BuiltinUiActionDispatcher {
                 (context.diagnostic_log)(message);
                 Ok(UiActionResult::Noop)
             }
+            UiAction::RunWorld => Ok(UiActionResult::RunWorldRequested),
         }
     }
 }

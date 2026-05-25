@@ -14,6 +14,7 @@ bevy = "0.17"
 flux_content.workspace = true
 flux_core.workspace = true
 flux_mod_loader.workspace = true
+flux_render.workspace = true
 flux_scenario.workspace = true
 flux_sim.workspace = true
 flux_ui.workspace = true

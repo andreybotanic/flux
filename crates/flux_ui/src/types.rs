@@ -93,6 +93,7 @@ pub enum UiAction {
     OpenMenu(UiMenuId),
     BackMenu,
     DiagnosticLog(String),
+    RunWorld,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

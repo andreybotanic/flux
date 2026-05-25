@@ -2273,6 +2273,7 @@ dependencies = [
  "flux_content",
  "flux_core",
  "flux_mod_loader",
+ "flux_render",
  "flux_scenario",
  "flux_sim",
  "flux_ui",
@@ -2311,6 +2312,14 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "toml",
+]
+
+[[package]]
+name = "flux_render"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "flux_world",
 ]
 
 [[package]]

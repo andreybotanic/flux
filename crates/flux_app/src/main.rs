@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod helpers;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Once;
@@ -12,11 +14,16 @@ use bevy::render::settings::{InstanceFlags, RenderCreation, WgpuSettings};
 use bevy::window::{Window, WindowPlugin};
 use flux_core::{NamespacedId, PrototypeId};
 use flux_mod_loader::DiscoveredMod;
-use flux_sim::SimRuntime;
+use flux_render::{FluxRenderPlugin, WorldRenderState};
+use flux_sim::{SimCommand, SimRuntime};
 use flux_ui::{
     BuiltinUiActionDispatcher, ContainerLayout, UiAction, UiActionContext, UiActionDispatcher,
     UiActionResult, UiMenuDefinition, UiMenuId, WidgetKind, WidgetNode,
 };
+use helpers::{find_scenario_by_id, format_error_block, print_discovered_mod, print_patch_trail};
+
+#[cfg(test)]
+use helpers::ScenarioLookupError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RunMode {
@@ -43,12 +50,26 @@ struct FluxUiRoot;
 #[derive(Component, Clone)]
 struct FluxUiButtonAction(UiAction);
 
+#[derive(Component)]
+struct FluxUiCamera;
+
 #[derive(Resource)]
 struct FluxUiState {
     registry: flux_ui::UiRegistry,
     dispatcher: BuiltinUiActionDispatcher,
     known_menus: BTreeSet<UiMenuId>,
     needs_rebuild: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Resource)]
+enum FluxScreenMode {
+    Menu,
+    World,
+}
+
+#[derive(Resource)]
+struct FluxSimState {
+    runtime: SimRuntime,
 }
 
 type UiButtonInteractions<'w, 's> = Query<
@@ -185,17 +206,23 @@ fn run_windowed() {
                 ..Default::default()
             }),
     );
+    app.add_plugins(FluxRenderPlugin);
     app.add_systems(
         Startup,
         (
             windowed_diagnostics,
             setup_primary_ui_camera,
+            setup_sim_runtime,
             setup_flux_ui_runtime,
         ),
     );
     app.add_systems(
         Update,
-        (handle_ui_button_interactions, rebuild_flux_ui_if_needed),
+        (
+            sync_ui_camera_activity,
+            handle_ui_button_interactions,
+            rebuild_flux_ui_if_needed,
+        ),
     );
     app.run();
 }
@@ -225,8 +252,35 @@ fn headless_diagnostics() {
 }
 
 fn setup_primary_ui_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn((
+        FluxUiCamera,
+        Camera2d,
+        Camera {
+            order: 1,
+            is_active: true,
+            ..Default::default()
+        },
+    ));
     info!("ui camera initialized");
+}
+
+fn sync_ui_camera_activity(
+    screen_mode: Option<Res<FluxScreenMode>>,
+    mut cameras: Query<&mut Camera, With<FluxUiCamera>>,
+) {
+    let world_mode = matches!(screen_mode, Some(mode) if *mode == FluxScreenMode::World);
+    for mut camera in &mut cameras {
+        camera.is_active = !world_mode;
+    }
+}
+
+fn setup_sim_runtime(mut commands: Commands) {
+    const FIXED_STEP: Duration = Duration::from_millis(16);
+    let runtime = SimRuntime::new(FIXED_STEP).unwrap_or_else(|error| {
+        panic!("windowed startup failed: cannot create simulation runtime: {error}")
+    });
+    commands.insert_resource(FluxSimState { runtime });
+    commands.insert_resource(FluxScreenMode::Menu);
 }
 
 fn setup_flux_ui_runtime(mut commands: Commands) {
@@ -291,21 +345,28 @@ fn resolve_initial_menu(known_menus: &BTreeSet<UiMenuId>) -> Result<UiMenuId, St
     ))
 }
 
-fn format_error_block<T: std::fmt::Display>(errors: &[T]) -> String {
-    errors
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn handle_ui_button_interactions(
     ui_state: Option<ResMut<FluxUiState>>,
+    screen_mode: Option<ResMut<FluxScreenMode>>,
+    sim_state: Option<ResMut<FluxSimState>>,
+    world_render_state: Option<ResMut<WorldRenderState>>,
     interactions: UiButtonInteractions<'_, '_>,
 ) {
     let Some(mut ui_state) = ui_state else {
         return;
     };
+    let Some(mut screen_mode) = screen_mode else {
+        return;
+    };
+    let Some(mut sim_state) = sim_state else {
+        return;
+    };
+    let Some(mut world_render_state) = world_render_state else {
+        return;
+    };
+    if *screen_mode == FluxScreenMode::World {
+        return;
+    }
 
     for (interaction, button_action) in &interactions {
         if *interaction != Interaction::Pressed {
@@ -324,6 +385,34 @@ fn handle_ui_button_interactions(
                 ui_state.needs_rebuild = true;
             }
             Ok(UiActionResult::Noop) => {}
+            Ok(UiActionResult::RunWorldRequested) => {
+                if let Err(error) = sim_state.runtime.enqueue_command(SimCommand::CreateWorld {
+                    width: 64,
+                    height: 64,
+                    seed: 1,
+                }) {
+                    error!("RunWorld failed to enqueue CreateWorld command: {error}");
+                    continue;
+                }
+                if let Err(error) = sim_state.runtime.initialize() {
+                    error!("RunWorld failed to initialize simulation runtime: {error}");
+                    continue;
+                }
+                let Some(world) = sim_state.runtime.world() else {
+                    error!("RunWorld failed: world is missing after initialization");
+                    continue;
+                };
+
+                world_render_state.show_world(world.size(), 1.0);
+                *screen_mode = FluxScreenMode::World;
+                ui_state.needs_rebuild = false;
+                info!(
+                    "world view activated: size={}x{} seed={}",
+                    world.size().width,
+                    world.size().height,
+                    sim_state.runtime.world_seed().unwrap_or_default()
+                );
+            }
             Err(error) => error!("ui action dispatch failed: {error}"),
         }
     }
@@ -332,8 +421,16 @@ fn handle_ui_button_interactions(
 fn rebuild_flux_ui_if_needed(
     mut commands: Commands,
     ui_state: Option<ResMut<FluxUiState>>,
+    screen_mode: Option<Res<FluxScreenMode>>,
     existing_roots: Query<Entity, With<FluxUiRoot>>,
 ) {
+    if matches!(screen_mode, Some(mode) if *mode == FluxScreenMode::World) {
+        for entity in &existing_roots {
+            commands.entity(entity).despawn();
+        }
+        return;
+    }
+
     let Some(mut ui_state) = ui_state else {
         return;
     };
@@ -698,66 +795,6 @@ fn load_scenarios_from_mods() -> Result<Vec<flux_scenario::LoadedScenario>, i32>
     }
 
     Ok(scenario_report.scenarios)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ScenarioLookupError {
-    NotFound { scenario_id: String },
-}
-
-fn find_scenario_by_id<'a>(
-    scenarios: &'a [flux_scenario::LoadedScenario],
-    scenario_id: &PrototypeId,
-) -> Result<&'a flux_scenario::LoadedScenario, ScenarioLookupError> {
-    scenarios
-        .iter()
-        .find(|candidate| candidate.definition.id == *scenario_id)
-        .ok_or_else(|| ScenarioLookupError::NotFound {
-            scenario_id: scenario_id.to_string(),
-        })
-}
-
-impl std::fmt::Display for ScenarioLookupError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScenarioLookupError::NotFound { scenario_id } => write!(
-                f,
-                "ScenarioRunError:\n  action: run_scenario\n  scenario_id: {scenario_id}\n  reason: scenario not found"
-            ),
-        }
-    }
-}
-
-fn print_patch_trail(
-    registry: &flux_content::ContentRegistry,
-    prototype_id: &flux_core::PrototypeId,
-) {
-    let patches = registry
-        .applied_patches_for(prototype_id)
-        .collect::<Vec<_>>();
-    if patches.is_empty() {
-        return;
-    }
-
-    println!("  patches:");
-    for patch in patches {
-        println!(
-            "  - kind={} source_mod={} source_file={}",
-            patch.patch_kind.as_str(),
-            patch.source.mod_id,
-            patch.source.file
-        );
-    }
-}
-
-fn print_discovered_mod(module: &DiscoveredMod) {
-    println!(
-        "- id={} version={} api_version={} path={}",
-        module.manifest.mod_id,
-        module.manifest.version,
-        module.manifest.api_version,
-        module.directory_path.display()
-    );
 }
 
 impl std::fmt::Display for CliError {

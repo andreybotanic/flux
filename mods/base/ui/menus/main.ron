@@ -13,6 +13,11 @@ UiMenu(
                 text: "$base.menu.main.settings",
                 action: OpenMenu("base:menu/settings"),
             ),
+            Button(
+                id: "base:widget/main_menu/run_world",
+                text: "$base.menu.main.run_world",
+                action: RunWorld,
+            ),
             ExtensionPoint(
                 id: "base:widget/main_menu/actions_slot",
                 extension_point: "base:ui_ext/main_menu/actions",

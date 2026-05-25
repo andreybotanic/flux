@@ -9,6 +9,7 @@ members = [
     "crates/flux_world",
     "crates/flux_sim",
     "crates/flux_scenario",
+    "crates/flux_render",
 ]
 
 [workspace.package]
@@ -24,6 +25,7 @@ flux_ui = { path = "crates/flux_ui" }
 flux_world = { path = "crates/flux_world" }
 flux_sim = { path = "crates/flux_sim" }
 flux_scenario = { path = "crates/flux_scenario" }
+flux_render = { path = "crates/flux_render" }
 
 [profile.dev]
 debug = true
