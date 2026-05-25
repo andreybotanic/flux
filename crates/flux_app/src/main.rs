@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod helpers;
+mod world_debug;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -70,6 +71,12 @@ enum FluxScreenMode {
 #[derive(Resource)]
 struct FluxSimState {
     runtime: SimRuntime,
+}
+
+#[derive(Resource)]
+struct FluxWorldDebugContent {
+    // S11B temporary: content snapshot used to seed/debug-render world layers.
+    registry: flux_content::ContentRegistry,
 }
 
 type UiButtonInteractions<'w, 's> = Query<
@@ -326,6 +333,20 @@ fn setup_flux_ui_runtime(mut commands: Commands) {
         known_menus,
         needs_rebuild: true,
     });
+
+    let content_report = flux_content::load_content_registry(&report.valid_mods, resolved_order);
+    if !content_report.errors.is_empty() {
+        panic!(
+            "world debug startup failed during content registry load:\n{}",
+            format_error_block(&content_report.errors)
+        );
+    }
+    let content_registry = content_report
+        .registry
+        .unwrap_or_else(|| panic!("world debug startup failed: content registry is missing"));
+    commands.insert_resource(FluxWorldDebugContent {
+        registry: content_registry,
+    });
 }
 
 fn resolve_initial_menu(known_menus: &BTreeSet<UiMenuId>) -> Result<UiMenuId, String> {
@@ -349,6 +370,7 @@ fn handle_ui_button_interactions(
     ui_state: Option<ResMut<FluxUiState>>,
     screen_mode: Option<ResMut<FluxScreenMode>>,
     sim_state: Option<ResMut<FluxSimState>>,
+    world_debug_content: Option<Res<FluxWorldDebugContent>>,
     world_render_state: Option<ResMut<WorldRenderState>>,
     interactions: UiButtonInteractions<'_, '_>,
 ) {
@@ -359,6 +381,9 @@ fn handle_ui_button_interactions(
         return;
     };
     let Some(mut sim_state) = sim_state else {
+        return;
+    };
+    let Some(world_debug_content) = world_debug_content else {
         return;
     };
     let Some(mut world_render_state) = world_render_state else {
@@ -398,18 +423,35 @@ fn handle_ui_button_interactions(
                     error!("RunWorld failed to initialize simulation runtime: {error}");
                     continue;
                 }
-                let Some(world) = sim_state.runtime.world() else {
+                let (world_size, debug_snapshot) = if let Some(world) =
+                    sim_state.runtime.world_mut()
+                {
+                    if let Err(error) =
+                        world_debug::populate_world_debug_mvp(world, &world_debug_content.registry)
+                    {
+                        error!(
+                            "RunWorld temporary S11B world population failed (continuing with partial world): {error}"
+                        );
+                    }
+                    (
+                        world.size(),
+                        world_debug::build_world_debug_snapshot(
+                            world,
+                            &world_debug_content.registry,
+                        ),
+                    )
+                } else {
                     error!("RunWorld failed: world is missing after initialization");
                     continue;
                 };
 
-                world_render_state.show_world(world.size(), 1.0);
+                world_render_state.show_world(world_size, 1.0, debug_snapshot);
                 *screen_mode = FluxScreenMode::World;
                 ui_state.needs_rebuild = false;
                 info!(
                     "world view activated: size={}x{} seed={}",
-                    world.size().width,
-                    world.size().height,
+                    world_size.width,
+                    world_size.height,
                     sim_state.runtime.world_seed().unwrap_or_default()
                 );
             }

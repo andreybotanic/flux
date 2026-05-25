@@ -1,9 +1,45 @@
 use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::math::Isometry2d;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use flux_world::{GridSize, TilePos};
 
 const WORLD_GRID_COLOR: Color = Color::srgb(0.27, 0.29, 0.33);
+const SOLID_CELL_INSET_FACTOR: f32 = 0.90;
+const GAS_CELL_INSET_FACTOR: f32 = 0.84;
+const STRUCTURE_OUTLINE_FACTOR: f32 = 0.97;
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WorldDebugSnapshot {
+    // S11B temporary debug layer payload. Intended to be replaced by a production render feed.
+    pub solid_cells: Vec<DebugSolidCell>,
+    pub gas_cells: Vec<DebugGasCell>,
+    pub structure_overlays: Vec<DebugStructureOverlay>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DebugSolidCell {
+    // S11B temporary debug primitive.
+    pub tile: TilePos,
+    pub color: Color,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DebugGasCell {
+    // S11B temporary debug primitive.
+    pub tile: TilePos,
+    pub base_color: Color,
+    pub total_particles: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DebugStructureOverlay {
+    // S11B temporary debug primitive.
+    pub origin: TilePos,
+    pub width: u16,
+    pub height: u16,
+    pub color: Color,
+}
 
 #[derive(Debug, Resource, Clone, PartialEq)]
 pub struct WorldRenderState {
@@ -11,6 +47,8 @@ pub struct WorldRenderState {
     grid_size: Option<GridSize>,
     tile_pitch: f32,
     reset_camera_requested: bool,
+    // S11B temporary debug-only layer cache.
+    debug_snapshot: WorldDebugSnapshot,
 }
 
 impl Default for WorldRenderState {
@@ -20,6 +58,7 @@ impl Default for WorldRenderState {
             grid_size: None,
             tile_pitch: 1.0,
             reset_camera_requested: false,
+            debug_snapshot: WorldDebugSnapshot::default(),
         }
     }
 }
@@ -40,16 +79,32 @@ impl WorldRenderState {
         self.tile_pitch
     }
 
-    pub fn show_world(&mut self, grid_size: GridSize, tile_pitch: f32) {
+    #[must_use]
+    pub fn debug_snapshot(&self) -> &WorldDebugSnapshot {
+        &self.debug_snapshot
+    }
+
+    pub fn show_world(
+        &mut self,
+        grid_size: GridSize,
+        tile_pitch: f32,
+        debug_snapshot: WorldDebugSnapshot,
+    ) {
         self.visible = true;
         self.grid_size = Some(grid_size);
         self.tile_pitch = tile_pitch.max(0.001);
         self.reset_camera_requested = true;
+        self.debug_snapshot = debug_snapshot;
+    }
+
+    pub fn set_debug_snapshot(&mut self, debug_snapshot: WorldDebugSnapshot) {
+        self.debug_snapshot = debug_snapshot;
     }
 
     pub fn hide_world(&mut self) {
         self.visible = false;
         self.reset_camera_requested = false;
+        self.debug_snapshot = WorldDebugSnapshot::default();
     }
 }
 
@@ -102,6 +157,9 @@ impl Plugin for FluxRenderPlugin {
                     world_camera_pan_keyboard,
                     world_camera_pan_drag,
                     draw_world_grid,
+                    draw_solid_layer,
+                    draw_gas_layer,
+                    draw_structure_layer,
                 ),
             );
     }
@@ -338,6 +396,70 @@ fn draw_world_grid(render_state: Res<WorldRenderState>, mut gizmos: Gizmos) {
     }
 }
 
+fn draw_solid_layer(render_state: Res<WorldRenderState>, mut gizmos: Gizmos) {
+    if !render_state.is_visible() {
+        return;
+    }
+
+    let pitch = render_state.tile_pitch();
+    let rect_size = Vec2::splat(pitch * SOLID_CELL_INSET_FACTOR);
+    for cell in &render_state.debug_snapshot().solid_cells {
+        let center = tile_to_world_center(cell.tile, pitch);
+        gizmos.rect_2d(Isometry2d::from_translation(center), rect_size, cell.color);
+    }
+}
+
+fn draw_gas_layer(render_state: Res<WorldRenderState>, mut gizmos: Gizmos) {
+    if !render_state.is_visible() {
+        return;
+    }
+
+    let pitch = render_state.tile_pitch();
+    let rect_size = Vec2::splat(pitch * GAS_CELL_INSET_FACTOR);
+    for cell in &render_state.debug_snapshot().gas_cells {
+        let center = tile_to_world_center(cell.tile, pitch);
+        let intensity = gas_intensity_from_particles(cell.total_particles);
+        let srgb = cell.base_color.to_srgba();
+        let color = Color::srgba(srgb.red, srgb.green, srgb.blue, intensity);
+        gizmos.rect_2d(Isometry2d::from_translation(center), rect_size, color);
+    }
+}
+
+fn draw_structure_layer(render_state: Res<WorldRenderState>, mut gizmos: Gizmos) {
+    if !render_state.is_visible() {
+        return;
+    }
+
+    let pitch = render_state.tile_pitch();
+    for structure in &render_state.debug_snapshot().structure_overlays {
+        let rect_size = Vec2::new(
+            f32::from(structure.width) * pitch * STRUCTURE_OUTLINE_FACTOR,
+            f32::from(structure.height) * pitch * STRUCTURE_OUTLINE_FACTOR,
+        );
+        let center = Vec2::new(
+            (structure.origin.x as f32 + f32::from(structure.width) * 0.5) * pitch,
+            (structure.origin.y as f32 + f32::from(structure.height) * 0.5) * pitch,
+        );
+        gizmos.rect_2d(
+            Isometry2d::from_translation(center),
+            rect_size,
+            structure.color,
+        );
+    }
+}
+
+#[must_use]
+pub fn gas_intensity_from_particles(total_particles: u64) -> f32 {
+    if total_particles == 0 {
+        return 0.0;
+    }
+
+    let max_particles_for_mvp = 800.0;
+    let normalized = (((total_particles as f32).min(max_particles_for_mvp)) + 1.0).ln()
+        / (max_particles_for_mvp + 1.0).ln();
+    (0.12 + normalized * 0.73).clamp(0.12, 0.85)
+}
+
 #[must_use]
 pub fn tile_to_world_center(tile: TilePos, tile_pitch: f32) -> Vec2 {
     let pitch = tile_pitch.max(0.001);
@@ -417,10 +539,12 @@ fn cursor_to_world_position(
 #[cfg(test)]
 mod tests {
     use super::{
-        WorldCameraControlsConfig, clamp_camera_center_to_world_bounds, compute_zoom_bounds,
+        DebugStructureOverlay, STRUCTURE_OUTLINE_FACTOR, WorldCameraControlsConfig,
+        clamp_camera_center_to_world_bounds, compute_zoom_bounds, gas_intensity_from_particles,
         grid_line_segments, tile_to_world_center,
     };
     use bevy::math::Vec2;
+    use bevy::prelude::Color;
     use bevy::window::{Window, WindowResolution};
     use flux_world::{GridSize, TilePos};
 
@@ -496,5 +620,46 @@ mod tests {
 
         let above = clamp_camera_center_to_world_bounds(Vec2::new(100.0, 70.0), size, pitch);
         assert_eq!(above, Vec2::new(64.0, 64.0));
+    }
+
+    #[test]
+    fn gas_intensity_is_monotonic_and_deterministic() {
+        let points = [0, 1, 10, 100, 500, 1_000, 10_000];
+        let values = points
+            .iter()
+            .map(|value| gas_intensity_from_particles(*value))
+            .collect::<Vec<_>>();
+
+        assert_eq!(values[0], 0.0);
+        for pair in values.windows(2).skip(1) {
+            assert!(pair[1] >= pair[0]);
+        }
+        assert_eq!(
+            gas_intensity_from_particles(500),
+            gas_intensity_from_particles(500)
+        );
+    }
+
+    #[test]
+    fn structure_overlay_uses_expected_world_bounds() {
+        let pitch = 1.0;
+        let structure = DebugStructureOverlay {
+            origin: TilePos::new(4, 7),
+            width: 2,
+            height: 3,
+            color: Color::WHITE,
+        };
+
+        let center = Vec2::new(
+            (structure.origin.x as f32 + f32::from(structure.width) * 0.5) * pitch,
+            (structure.origin.y as f32 + f32::from(structure.height) * 0.5) * pitch,
+        );
+        let size = Vec2::new(
+            f32::from(structure.width) * pitch * STRUCTURE_OUTLINE_FACTOR,
+            f32::from(structure.height) * pitch * STRUCTURE_OUTLINE_FACTOR,
+        );
+
+        assert_eq!(center, Vec2::new(5.0, 8.5));
+        assert_eq!(size, Vec2::new(1.94, 2.91));
     }
 }
