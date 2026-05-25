@@ -1,7 +1,7 @@
 use bevy::prelude::Color;
 use flux_content::ContentRegistry;
 use flux_core::PrototypeId;
-use flux_render::{DebugGasCell, DebugSolidCell, DebugStructureOverlay, WorldDebugSnapshot};
+use flux_render::{DebugGasCell, SolidCellSprite, StructureSprite, WorldRenderSnapshot};
 use flux_world::{ParticleCount, StructurePlacementError, TilePos, WorldGrid, WorldGridError};
 
 // S11B temporary debug-only world seeding/snapshot module.
@@ -74,12 +74,15 @@ pub(crate) fn populate_world_debug_mvp(
     world: &mut WorldGrid,
     registry: &ContentRegistry,
 ) -> Result<(), WorldDebugPopulateError> {
-    // S11B temporary deterministic seed for visual verification.
-    let solid_id = registry
+    let solid_ids = registry
         .solid_cells()
-        .next()
         .map(|record| record.prototype.id.clone())
-        .ok_or(WorldDebugPopulateError::MissingSolidPrototype)?;
+        .take(2)
+        .collect::<Vec<_>>();
+    if solid_ids.is_empty() {
+        return Err(WorldDebugPopulateError::MissingSolidPrototype);
+    }
+    let primary_solid = solid_ids.first().expect("checked non-empty").clone();
 
     let gas_ids = registry
         .gases()
@@ -101,14 +104,22 @@ pub(crate) fn populate_world_debug_mvp(
 
     for x in 2..18 {
         let pos = TilePos::new(x, 3);
+        let solid_id = if x % 2 == 0 {
+            primary_solid.clone()
+        } else {
+            solid_ids
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| primary_solid.clone())
+        };
         world
-            .set_solid_cell_at(pos, Some(solid_id.clone()))
+            .set_solid_cell_at(pos, Some(solid_id))
             .map_err(|source| WorldDebugPopulateError::SetSolidFailed { pos, source })?;
     }
     for y in 4..11 {
         let pos = TilePos::new(10, y);
         world
-            .set_solid_cell_at(pos, Some(solid_id.clone()))
+            .set_solid_cell_at(pos, Some(primary_solid.clone()))
             .map_err(|source| WorldDebugPopulateError::SetSolidFailed { pos, source })?;
     }
 
@@ -140,11 +151,11 @@ pub(crate) fn populate_world_debug_mvp(
 }
 
 #[must_use]
-pub(crate) fn build_world_debug_snapshot(
+pub(crate) fn build_world_render_snapshot(
     world: &WorldGrid,
-    _registry: &ContentRegistry,
-) -> WorldDebugSnapshot {
-    let mut snapshot = WorldDebugSnapshot::default();
+    registry: &ContentRegistry,
+) -> WorldRenderSnapshot {
+    let mut snapshot = WorldRenderSnapshot::default();
     let size = world.size();
 
     for y in 0..size.height {
@@ -152,9 +163,16 @@ pub(crate) fn build_world_debug_snapshot(
             let pos = TilePos::new(x, y);
 
             if let Some(Some(solid)) = world.solid_cell_at(pos) {
-                snapshot.solid_cells.push(DebugSolidCell {
+                let record = registry
+                    .solid_cell(&solid)
+                    .unwrap_or_else(|| panic!("missing solid prototype in registry: {}", solid));
+                snapshot.solid_cells.push(SolidCellSprite {
                     tile: pos,
-                    color: stable_debug_color(solid.as_str(), 0.68, 0.58),
+                    image_path: format!(
+                        "{}/{}",
+                        record.source.mod_id,
+                        record.prototype.visual.image_path().as_str()
+                    ),
                 });
             }
 
@@ -178,11 +196,21 @@ pub(crate) fn build_world_debug_snapshot(
     }
 
     for structure in world.structures().instances.values() {
-        snapshot.structure_overlays.push(DebugStructureOverlay {
+        let record = registry.structure(&structure.prototype).unwrap_or_else(|| {
+            panic!(
+                "missing structure prototype in registry: {}",
+                structure.prototype
+            )
+        });
+        snapshot.structures.push(StructureSprite {
             origin: structure.origin,
             width: structure.size.width,
             height: structure.size.height,
-            color: stable_debug_color(structure.prototype.as_str(), 0.78, 0.63),
+            image_path: format!(
+                "{}/{}",
+                record.source.mod_id,
+                record.prototype.visual.image_path().as_str()
+            ),
         });
     }
 
@@ -208,13 +236,13 @@ fn stable_hue_from_key(key: &str) -> f32 {
 #[cfg(test)]
 mod tests {
     use flux_content::{
-        ContentRegistry, LocalizationKey, PrototypeSource, SolidCellPrototype, StructurePrototype,
-        TileSize,
+        AssetPath, ContentRegistry, LocalizationKey, PrototypeSource, SingleSpriteVisual,
+        SolidCellPrototype, StructurePrototype, TileSize, VisualDefinition, VisualDefinitionKind,
     };
     use flux_core::PrototypeId;
     use flux_world::{GridSize, WorldGrid};
 
-    use super::{build_world_debug_snapshot, populate_world_debug_mvp};
+    use super::{build_world_render_snapshot, populate_world_debug_mvp};
 
     fn source() -> PrototypeSource {
         PrototypeSource {
@@ -231,6 +259,14 @@ mod tests {
         PrototypeId::parse(value).expect("valid prototype id")
     }
 
+    fn visual(path: &str) -> VisualDefinition {
+        VisualDefinition {
+            kind: VisualDefinitionKind::SingleSprite(SingleSpriteVisual {
+                image: AssetPath::parse(path).expect("valid asset path"),
+            }),
+        }
+    }
+
     fn registry_with_full_debug_content() -> ContentRegistry {
         let mut registry = ContentRegistry::new();
         registry
@@ -239,6 +275,7 @@ mod tests {
                     id: id("base:solid_cell/floor_cell"),
                     display_name: key("base.solid.floor_cell"),
                     gas_permeable: false,
+                    visual: visual("textures/solid/floor_cell.png"),
                 },
                 source(),
             )
@@ -272,6 +309,7 @@ mod tests {
                         width: 2,
                         height: 1,
                     },
+                    visual: visual("textures/structure/gas_pump.png"),
                 },
                 source(),
             )
@@ -285,6 +323,7 @@ mod tests {
                         width: 1,
                         height: 1,
                     },
+                    visual: visual("textures/structure/vent.png"),
                 },
                 source(),
             )
@@ -299,11 +338,11 @@ mod tests {
         let mut world = WorldGrid::new(GridSize::new(64, 64)).expect("world should be created");
 
         populate_world_debug_mvp(&mut world, &registry).expect("population should succeed");
-        let snapshot = build_world_debug_snapshot(&world, &registry);
+        let snapshot = build_world_render_snapshot(&world, &registry);
 
         assert!(!snapshot.solid_cells.is_empty());
         assert!(!snapshot.gas_cells.is_empty());
-        assert!(!snapshot.structure_overlays.is_empty());
+        assert!(!snapshot.structures.is_empty());
     }
 
     #[test]

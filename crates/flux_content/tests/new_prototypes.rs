@@ -57,7 +57,7 @@ api_version = "0.1.0"
     );
     fs::write(
         mods_root.join("base/content/solid_cells/floor_cell.ron"),
-        "SolidCellPrototype(id: \"other:solid_cell/floor_cell\", display_name: \"base.solid_cell.floor_cell\", gas_permeable: false)",
+        "SolidCellPrototype(id: \"other:solid_cell/floor_cell\", display_name: \"base.solid_cell.floor_cell\", gas_permeable: false, visual: VisualDefinition(kind: SingleSprite(image: \"textures/solid/test.png\")))",
     )
     .expect("write file");
 
@@ -139,6 +139,42 @@ api_version = "0.1.0"
                     && file.ends_with("invalid.ron")
                     && field.as_ref() == "molar_mass"
                     && prototype_id.as_ref() == "base:gas/oxygen"
+        )
+    }));
+}
+
+#[test]
+fn reports_invalid_visual_asset_path_with_context() {
+    let temp_dir = TempDir::new().expect("tempdir");
+    let mods_root = temp_dir.path().join("mods");
+    fs::create_dir_all(mods_root.join("base/content/structures")).expect("create dir");
+    write_manifest(
+        &mods_root.join("base/manifest.toml"),
+        r#"
+[mod]
+id = "base"
+version = "1.0.0"
+api_version = "0.1.0"
+"#,
+    );
+    fs::write(
+        mods_root.join("base/content/structures/broken_visual.ron"),
+        r#"StructurePrototype(id: "base:building/broken_visual", display_name: "base.structure.broken_visual", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/broken.jpg")))"#,
+    )
+    .expect("write file");
+
+    let report = discover_and_resolve_mods(&mods_root);
+    let load_report =
+        load_content_registry(&report.valid_mods, &report.resolved_order.expect("order"));
+
+    assert!(load_report.registry.is_none());
+    assert!(load_report.errors.iter().any(|error| {
+        matches!(
+            error,
+            ContentRegistryError::InvalidPrototypeField { mod_id, file, field, .. }
+                if mod_id.as_ref() == "base"
+                    && file.ends_with("broken_visual.ron")
+                    && field.as_ref() == "visual.image"
         )
     }));
 }

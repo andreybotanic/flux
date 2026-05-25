@@ -7,6 +7,7 @@
 /screenshots/
 /replays/
 /tmp/
+/crates/flux_app/assets/
 
 # OS/editor noise
 .DS_Store

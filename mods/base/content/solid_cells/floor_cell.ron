@@ -1,1 +1,11 @@
-SolidCellPrototype(id: "base:solid_cell/floor_cell", display_name: "base.solid_cell.floor_cell", gas_permeable: false)
+SolidCellPrototype(
+    id: "base:solid_cell/floor_cell",
+    display_name: "base.solid_cell.floor_cell",
+    gas_permeable: false,
+    visual: VisualDefinition(
+        kind: SingleSprite(
+            image: "textures/solid/floor_cell.png",
+        ),
+    ),
+)
+

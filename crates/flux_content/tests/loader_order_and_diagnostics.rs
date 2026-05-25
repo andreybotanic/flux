@@ -109,7 +109,7 @@ base = "*"
     );
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(

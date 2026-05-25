@@ -1,4 +1,4 @@
-# S11C — Sprite Visuals MVP
+﻿# S11C — Sprite Visuals MVP
 
 ## Depends on
 
@@ -27,25 +27,21 @@ prototype -> visual definition -> sprite rendering
 
 Prototype не должен хранить прямой путь к изображению.
 
-Prototype должен ссылаться на отдельную visual definition:
+`VisualDefinition` хранится inline внутри prototype.
 
 ```rust
 pub struct SolidCellPrototype {
-    pub visual: VisualDefinitionId,
+    pub visual: VisualDefinition,
+}
+
+pub struct StructurePrototype {
+    pub visual: VisualDefinition,
 }
 ```
 
 ---
 
 ## Реализовать
-
-### VisualDefinitionId
-
-```rust
-pub struct VisualDefinitionId(pub NamespacedId);
-```
-
----
 
 ### VisualDefinition
 
@@ -65,42 +61,31 @@ pub struct SingleSpriteVisual {
 }
 ```
 
-Необходимо сгенерировать минимальные спрайты для всех твердых клеток и структур. В альнейшем они будут заменены на реальные спрайты.
-
----
-
-### Visual registry
-
-Добавить:
-
-```text
-VisualDefinition registry
-```
-
-Реестр должен:
-
-- загружать visual definitions из модов;
-- валидировать duplicate IDs;
-- валидировать references из prototype;
-- поддерживать lookup по `VisualDefinitionId`.
+Необходимо сгенерировать минимальные спрайты для всех твердых клеток и структур. В дальнейшем они будут заменены на реальные спрайты.
 
 ---
 
 ## Prototype integration
 
-На этапе `S11C` достаточно интеграции только с:
+На этапе `S11C` интеграция делается с:
 
 ```text
 SolidCellPrototype
+StructurePrototype
 ```
 
 Пример:
 
 ```ron
 SolidCellPrototype(
-    id: "base:solid_cell/granite",
-    display_name: "$base.solid_cell.granite",
-    visual: "base:visual/solid/granite",
+    id: "base:solid_cell/floor_cell",
+    display_name: "$base.solid_cell.floor_cell",
+    gas_permeable: false,
+    visual: VisualDefinition(
+        kind: SingleSprite(
+            image: "textures/solid/floor_cell.png",
+        ),
+    ),
 )
 ```
 
@@ -109,15 +94,17 @@ SolidCellPrototype(
 ## Формат visual definition
 
 ```ron
-VisualDefinition(
-    id: "base:visual/solid/granite",
-    kind: SingleSprite(
-        image: "base/textures/solid/granite.png",
+StructurePrototype(
+    id: "base:building/gas_pump",
+    display_name: "$base.structure.gas_pump",
+    size: (width: 2, height: 1),
+    visual: VisualDefinition(
+        kind: SingleSprite(
+            image: "textures/structure/gas_pump.png",
+        ),
     ),
 )
 ```
-
-VisualDefinition разрешается хранить в том же файле, что и SolidCellPrototype, к которому этот VisualDefinition относится.
 
 ---
 
@@ -127,9 +114,16 @@ VisualDefinition разрешается хранить в том же файле
 
 ```text
 SolidCellPrototype
-    -> VisualDefinitionId
-        -> VisualDefinition
-            -> Bevy image/sprite
+    -> VisualDefinition
+        -> Bevy image/sprite
+```
+
+Рендер structures должен работать через:
+
+```text
+StructurePrototype
+    -> VisualDefinition
+        -> Bevy image/sprite
 ```
 
 Запрещено:
@@ -153,6 +147,9 @@ prototype -> direct image path
 ```text
 png
 ```
+
+Спрайты должны лежать в моде, который определяет соответствующие сущности
+(например, `mods/base/assets/...` для `base`-контента).
 
 Поддержка:
 
@@ -237,12 +234,10 @@ cargo test --workspace
 Unit/integration tests:
 
 ```text
-- registers visual definition;
-- rejects duplicate visual definition id;
-- validates prototype visual reference;
-- missing visual reference returns structured error;
-- missing texture asset uses fallback rendering path;
+- parses inline VisualDefinition for solid and structure;
+- validates prototype visual fields;
 - solid cells render through VisualDefinition;
+- structure render uses VisualDefinition;
 - renderer does not read sprite path directly from prototype.
 ```
 
@@ -250,20 +245,14 @@ Unit/integration tests:
 
 ## Manual verification
 
-Добавить debug scene:
-
-```bash
-cargo run -p flux_app -- --world-sprite-debug
-```
-
 Ожидаемый результат:
 
 ```text
 - открывается окно;
 - solid cells отображаются спрайтами;
+- структуры отображаются спрайтами;
 - разные SolidCellPrototype могут использовать разные спрайты;
-- отсутствующий asset не вызывает panic;
-- fallback visualization работает;
+- отсутствующий asset вызывает ошибку загрузки плагина;
 - debug visualization газа из S11B остается работоспособной.
 ```
 
@@ -273,14 +262,15 @@ cargo run -p flux_app -- --world-sprite-debug
 
 Этап завершен, если:
 
-- существует `VisualDefinitionId`;
-- существует `VisualDefinition registry`;
+- существует `VisualDefinition`;
 - реализован `SingleSpriteVisual`;
-- `SolidCellPrototype` использует `VisualDefinitionId`;
+- `SolidCellPrototype` использует inline `VisualDefinition`;
+- `StructurePrototype` использует inline `VisualDefinition`;
 - solid cells отображаются спрайтами;
+- structures отображаются спрайтами;
 - prototype не хранит прямой путь к изображению;
-- fallback rendering работает;
-- renderer использует visual registry;
+- renderer использует `VisualDefinition`;
 - architecture не зашита под single-sprite-only модель;
 - autotiling/47-sprite model не реализованы;
 - все automated checks проходят.
+

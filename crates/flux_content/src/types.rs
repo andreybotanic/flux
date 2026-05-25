@@ -126,6 +126,7 @@ pub struct SolidCellPrototype {
     pub id: PrototypeId,
     pub display_name: LocalizationKey,
     pub gas_permeable: bool,
+    pub visual: VisualDefinition,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -142,6 +143,140 @@ pub struct StructurePrototype {
     pub id: PrototypeId,
     pub display_name: LocalizationKey,
     pub size: TileSize,
+    pub visual: VisualDefinition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetPath(String);
+
+impl AssetPath {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err("asset path must not be empty".to_owned());
+        }
+        if trimmed.starts_with('/') {
+            return Err("asset path must be relative to assets root".to_owned());
+        }
+        if trimmed.contains('\\') {
+            return Err("asset path must use `/` separators".to_owned());
+        }
+        if trimmed.contains(':') {
+            return Err("asset path must not contain `:`".to_owned());
+        }
+        if trimmed.split('/').any(|segment| segment.is_empty()) {
+            return Err("asset path contains empty segment".to_owned());
+        }
+        if trimmed
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
+        {
+            return Err("asset path must not contain dot segments".to_owned());
+        }
+
+        Ok(Self(trimmed.to_owned()))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for AssetPath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for AssetPath {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl Serialize for AssetPath {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AssetPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SingleSpriteVisual {
+    pub image: AssetPath,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VisualDefinition {
+    pub kind: VisualDefinitionKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VisualDefinitionKind {
+    SingleSprite(SingleSpriteVisual),
+}
+
+impl VisualDefinition {
+    #[must_use]
+    pub fn image_path(&self) -> &AssetPath {
+        match &self.kind {
+            VisualDefinitionKind::SingleSprite(single) => &single.image,
+        }
+    }
+
+    pub fn validate(
+        &self,
+        prototype_id: &PrototypeId,
+        source: &PrototypeSource,
+        field_prefix: &str,
+    ) -> Result<(), ContentRegistryError> {
+        let image = self.image_path().as_str();
+        if !image.to_ascii_lowercase().ends_with(".png") {
+            return Err(ContentRegistryError::InvalidPrototypeField {
+                mod_id: source.mod_id.clone().into(),
+                file: source.file.clone().into(),
+                prototype_id: prototype_id.to_string().into(),
+                field: format!("{field_prefix}.image").into(),
+                reason: format!("only png textures are supported in S11C, got `{image}`").into(),
+            });
+        }
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for VisualDefinitionKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        enum RawKind {
+            SingleSprite { image: AssetPath },
+        }
+
+        let raw = RawKind::deserialize(deserializer)?;
+        Ok(match raw {
+            RawKind::SingleSprite { image } => Self::SingleSprite(SingleSpriteVisual { image }),
+        })
+    }
 }
 
 impl PrototypeValidate for SubstancePrototype {
@@ -152,15 +287,16 @@ impl PrototypeValidate for SubstancePrototype {
 }
 
 impl PrototypeValidate for SolidCellPrototype {
-    fn validate(&self, _source: &PrototypeSource) -> Result<(), ContentRegistryError> {
-        // S06: no domain constraints yet; keep explicit validate path for future rules.
-        Ok(())
+    fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
+        self.visual.validate(&self.id, source, "visual")
     }
 }
 
 impl PrototypeValidate for StructurePrototype {
     fn validate(&self, source: &PrototypeSource) -> Result<(), ContentRegistryError> {
-        self.size.validate(&self.id, source)
+        self.size
+            .validate(&self.id, source)
+            .and_then(|_| self.visual.validate(&self.id, source, "visual"))
     }
 }
 
@@ -211,11 +347,13 @@ pub struct SolidCellPrototypePatch {
     pub display_name: Option<LocalizationKey>,
     #[serde(default)]
     pub gas_permeable: Option<bool>,
+    #[serde(default)]
+    pub visual: Option<VisualDefinition>,
 }
 
 impl PrototypePatchFor<SolidCellPrototype> for SolidCellPrototypePatch {
     fn is_empty(&self) -> bool {
-        self.display_name.is_none() && self.gas_permeable.is_none()
+        self.display_name.is_none() && self.gas_permeable.is_none() && self.visual.is_none()
     }
 
     fn apply_to(self, target: &mut SolidCellPrototype) -> PatchResult {
@@ -224,6 +362,9 @@ impl PrototypePatchFor<SolidCellPrototype> for SolidCellPrototypePatch {
         }
         if let Some(gas_permeable) = self.gas_permeable {
             target.gas_permeable = gas_permeable;
+        }
+        if let Some(visual) = self.visual {
+            target.visual = visual;
         }
         Ok(())
     }
@@ -236,11 +377,13 @@ pub struct StructurePrototypePatch {
     pub display_name: Option<LocalizationKey>,
     #[serde(default)]
     pub size: Option<TileSize>,
+    #[serde(default)]
+    pub visual: Option<VisualDefinition>,
 }
 
 impl PrototypePatchFor<StructurePrototype> for StructurePrototypePatch {
     fn is_empty(&self) -> bool {
-        self.display_name.is_none() && self.size.is_none()
+        self.display_name.is_none() && self.size.is_none() && self.visual.is_none()
     }
 
     fn apply_to(self, target: &mut StructurePrototype) -> PatchResult {
@@ -249,6 +392,9 @@ impl PrototypePatchFor<StructurePrototype> for StructurePrototypePatch {
         }
         if let Some(size) = self.size {
             target.size = size;
+        }
+        if let Some(visual) = self.visual {
+            target.visual = visual;
         }
         Ok(())
     }

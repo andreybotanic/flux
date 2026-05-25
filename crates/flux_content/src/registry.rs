@@ -269,8 +269,18 @@ impl ContentRegistry {
         self.solid_cells.values()
     }
 
+    #[must_use]
+    pub fn solid_cell(&self, id: &PrototypeId) -> Option<&SolidCellRecord> {
+        self.solid_cells.get(id)
+    }
+
     pub fn structures(&self) -> impl Iterator<Item = &StructureRecord> {
         self.structures.values()
+    }
+
+    #[must_use]
+    pub fn structure(&self, id: &PrototypeId) -> Option<&StructureRecord> {
+        self.structures.get(id)
     }
 
     pub fn gases(&self) -> impl Iterator<Item = &GasRecord> {

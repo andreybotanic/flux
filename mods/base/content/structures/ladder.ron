@@ -1,1 +1,11 @@
-StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))
+StructurePrototype(
+    id: "base:building/ladder",
+    display_name: "base.structure.ladder",
+    size: (width: 1, height: 1),
+    visual: VisualDefinition(
+        kind: SingleSprite(
+            image: "textures/structure/ladder.png",
+        ),
+    ),
+)
+

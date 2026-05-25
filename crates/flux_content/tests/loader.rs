@@ -24,7 +24,7 @@ api_version = "0.1.0"
     );
     fs::write(
         mods_root.join("base/content/solid_cells/floor_cell.ron"),
-        r#"SolidCellPrototype(id: "base:solid_cell/floor_cell", display_name: "base.solid_cell.floor_cell", gas_permeable: false)"#,
+        r#"SolidCellPrototype(id: "base:solid_cell/floor_cell", display_name: "base.solid_cell.floor_cell", gas_permeable: false, visual: VisualDefinition(kind: SingleSprite(image: "textures/solid/test.png")))"#,
     )
     .expect("write solid cell");
     fs::write(
@@ -34,7 +34,7 @@ api_version = "0.1.0"
     .expect("write substance");
     fs::write(
         mods_root.join("base/content/structures/pump.ron"),
-        r#"StructurePrototype(id: "base:building/gas_pump", display_name: "base.structure.gas_pump", size: (width: 1, height: 2))"#,
+        r#"StructurePrototype(id: "base:building/gas_pump", display_name: "base.structure.gas_pump", size: (width: 1, height: 2), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(
@@ -126,21 +126,24 @@ base = "*"
 
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(
         mods_root.join("test_content_mod/content/patches/base_building_ladder.ron"),
-        r#"PrototypePatch(target: "base:building/ladder", body: Structure(display_name: "test_content_mod.structure.ladder", size: (width: 2, height: 1)))"#,
+        r#"PrototypePatch(target: "base:building/ladder", body: Structure(display_name: "test_content_mod.structure.ladder", size: (width: 2, height: 1), visual: Some(VisualDefinition(kind: SingleSprite(image: "textures/structure/patched.png")))))"#,
     )
     .expect("write patch");
 
     let report = discover_and_resolve_mods(&mods_root);
     let load_report =
         load_content_registry(&report.valid_mods, &report.resolved_order.expect("order"));
+    assert!(
+        load_report.errors.is_empty(),
+        "unexpected content errors: {:?}",
+        load_report.errors
+    );
     let registry = load_report.registry.expect("registry");
-
-    assert!(load_report.errors.is_empty());
     let ladder = registry
         .structures()
         .find(|record| record.prototype.id.as_str() == "base:building/ladder")
@@ -150,6 +153,10 @@ base = "*"
         "test_content_mod.structure.ladder"
     );
     assert_eq!(ladder.prototype.size.width, 2);
+    assert_eq!(
+        ladder.prototype.visual.image_path().as_str(),
+        "textures/structure/patched.png"
+    );
 
     let patch_sources: Vec<&str> = registry
         .applied_patches_for(&ladder.prototype.id)
@@ -188,7 +195,7 @@ base = "*"
     );
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(
@@ -257,7 +264,7 @@ test_content_mod = "*"
 
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(
@@ -327,7 +334,7 @@ base = "*"
     );
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(
@@ -383,7 +390,7 @@ base = "*"
     );
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(
@@ -432,7 +439,7 @@ base = "*"
     );
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(
@@ -481,7 +488,7 @@ base = "*"
     );
     fs::write(
         mods_root.join("base/content/structures/ladder.ron"),
-        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1))"#,
+        r#"StructurePrototype(id: "base:building/ladder", display_name: "base.structure.ladder", size: (width: 1, height: 1), visual: VisualDefinition(kind: SingleSprite(image: "textures/structure/test.png")))"#,
     )
     .expect("write structure");
     fs::write(

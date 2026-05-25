@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Once;
 use std::time::Duration;
 
+use bevy::asset::AssetPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::render::RenderPlugin;
@@ -191,9 +192,14 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
 }
 
 fn run_windowed() {
+    let mods_asset_root = resolve_mods_asset_root();
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
+            .set(AssetPlugin {
+                file_path: mods_asset_root,
+                ..Default::default()
+            })
             .set(LogPlugin {
                 filter: "info,wgpu=warn,naga=warn".to_owned(),
                 ..Default::default()
@@ -232,6 +238,13 @@ fn run_windowed() {
         ),
     );
     app.run();
+}
+
+fn resolve_mods_asset_root() -> String {
+    let cwd = std::env::current_dir().unwrap_or_else(|error| {
+        panic!("windowed startup failed: cannot resolve current dir: {error}")
+    });
+    cwd.join("mods").to_string_lossy().into_owned()
 }
 
 fn run_headless() {
@@ -423,7 +436,7 @@ fn handle_ui_button_interactions(
                     error!("RunWorld failed to initialize simulation runtime: {error}");
                     continue;
                 }
-                let (world_size, debug_snapshot) = if let Some(world) =
+                let (world_size, render_snapshot) = if let Some(world) =
                     sim_state.runtime.world_mut()
                 {
                     if let Err(error) =
@@ -435,7 +448,7 @@ fn handle_ui_button_interactions(
                     }
                     (
                         world.size(),
-                        world_debug::build_world_debug_snapshot(
+                        world_debug::build_world_render_snapshot(
                             world,
                             &world_debug_content.registry,
                         ),
@@ -445,7 +458,7 @@ fn handle_ui_button_interactions(
                     continue;
                 };
 
-                world_render_state.show_world(world_size, 1.0, debug_snapshot);
+                world_render_state.show_world(world_size, 1.0, render_snapshot);
                 *screen_mode = FluxScreenMode::World;
                 ui_state.needs_rebuild = false;
                 info!(

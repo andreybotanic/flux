@@ -13,7 +13,7 @@ use crate::types::{
     GasPrototype, GasPrototypePatch, LocalizationKey, PrototypeBody, PrototypeKind, PrototypePatch,
     PrototypePatchBody, PrototypeSource, SolidCellPrototype, SolidCellPrototypePatch,
     StructurePrototype, StructurePrototypePatch, SubstancePrototype, SubstancePrototypePatch,
-    TileSize,
+    TileSize, VisualDefinition,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,12 +35,14 @@ enum ParsedPrototypeBody {
         id: PrototypeId,
         display_name: LocalizationKey,
         gas_permeable: bool,
+        visual: VisualDefinition,
     },
     #[serde(rename = "StructurePrototype")]
     Structure {
         id: PrototypeId,
         display_name: LocalizationKey,
         size: TileSize,
+        visual: VisualDefinition,
     },
     #[serde(rename = "GasPrototype")]
     Gas {
@@ -71,12 +73,16 @@ enum ParsedPrototypePatchBody {
         display_name: Option<LocalizationKey>,
         #[serde(default, deserialize_with = "deserialize_patch_option")]
         gas_permeable: Option<bool>,
+        #[serde(default)]
+        visual: Option<VisualDefinition>,
     },
     Structure {
         #[serde(default, deserialize_with = "deserialize_patch_option")]
         display_name: Option<LocalizationKey>,
         #[serde(default, deserialize_with = "deserialize_patch_option")]
         size: Option<TileSize>,
+        #[serde(default)]
+        visual: Option<VisualDefinition>,
     },
     Gas {
         #[serde(default, deserialize_with = "deserialize_patch_option")]
@@ -249,19 +255,23 @@ fn parse_prototype(
             id,
             display_name,
             gas_permeable,
+            visual,
         } => PrototypeBody::SolidCellPrototype(SolidCellPrototype {
             id,
             display_name,
             gas_permeable,
+            visual,
         }),
         ParsedPrototypeBody::Structure {
             id,
             display_name,
             size,
+            visual,
         } => PrototypeBody::StructurePrototype(StructurePrototype {
             id,
             display_name,
             size,
+            visual,
         }),
         ParsedPrototypeBody::Gas {
             id,
@@ -319,13 +329,21 @@ fn parse_patch(
         ParsedPrototypePatchBody::SolidCell {
             display_name,
             gas_permeable,
+            visual,
         } => PrototypePatchBody::SolidCell(SolidCellPrototypePatch {
             display_name,
             gas_permeable,
+            visual,
         }),
-        ParsedPrototypePatchBody::Structure { display_name, size } => {
-            PrototypePatchBody::Structure(StructurePrototypePatch { display_name, size })
-        }
+        ParsedPrototypePatchBody::Structure {
+            display_name,
+            size,
+            visual,
+        } => PrototypePatchBody::Structure(StructurePrototypePatch {
+            display_name,
+            size,
+            visual,
+        }),
         ParsedPrototypePatchBody::Gas {
             display_name,
             molar_mass,
