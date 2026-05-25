@@ -32,6 +32,12 @@ pub(crate) enum WorldDebugPopulateError {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WorldRenderSnapshotError {
+    MissingSolidPrototypeInRegistry { prototype: PrototypeId },
+    MissingStructurePrototypeInRegistry { prototype: PrototypeId },
+}
+
 impl std::fmt::Display for WorldDebugPopulateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -69,6 +75,25 @@ impl std::fmt::Display for WorldDebugPopulateError {
         }
     }
 }
+
+impl std::fmt::Display for WorldRenderSnapshotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingSolidPrototypeInRegistry { prototype } => write!(
+                f,
+                "WorldRenderSnapshotError:\n  layer: solid\n  prototype: {}\n  reason: prototype is missing in content registry",
+                prototype
+            ),
+            Self::MissingStructurePrototypeInRegistry { prototype } => write!(
+                f,
+                "WorldRenderSnapshotError:\n  layer: structure\n  prototype: {}\n  reason: prototype is missing in content registry",
+                prototype
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WorldRenderSnapshotError {}
 
 pub(crate) fn populate_world_debug_mvp(
     world: &mut WorldGrid,
@@ -154,7 +179,7 @@ pub(crate) fn populate_world_debug_mvp(
 pub(crate) fn build_world_render_snapshot(
     world: &WorldGrid,
     registry: &ContentRegistry,
-) -> WorldRenderSnapshot {
+) -> Result<WorldRenderSnapshot, WorldRenderSnapshotError> {
     let mut snapshot = WorldRenderSnapshot::default();
     let size = world.size();
 
@@ -163,9 +188,11 @@ pub(crate) fn build_world_render_snapshot(
             let pos = TilePos::new(x, y);
 
             if let Some(Some(solid)) = world.solid_cell_at(pos) {
-                let record = registry
-                    .solid_cell(&solid)
-                    .unwrap_or_else(|| panic!("missing solid prototype in registry: {}", solid));
+                let record = registry.solid_cell(&solid).ok_or_else(|| {
+                    WorldRenderSnapshotError::MissingSolidPrototypeInRegistry {
+                        prototype: solid.clone(),
+                    }
+                })?;
                 snapshot.solid_cells.push(SolidCellSprite {
                     tile: pos,
                     image_path: format!(
@@ -196,12 +223,11 @@ pub(crate) fn build_world_render_snapshot(
     }
 
     for structure in world.structures().instances.values() {
-        let record = registry.structure(&structure.prototype).unwrap_or_else(|| {
-            panic!(
-                "missing structure prototype in registry: {}",
-                structure.prototype
-            )
-        });
+        let record = registry.structure(&structure.prototype).ok_or_else(|| {
+            WorldRenderSnapshotError::MissingStructurePrototypeInRegistry {
+                prototype: structure.prototype.clone(),
+            }
+        })?;
         snapshot.structures.push(StructureSprite {
             origin: structure.origin,
             width: structure.size.width,
@@ -214,7 +240,7 @@ pub(crate) fn build_world_render_snapshot(
         });
     }
 
-    snapshot
+    Ok(snapshot)
 }
 
 #[must_use]
@@ -240,7 +266,7 @@ mod tests {
         SolidCellPrototype, StructurePrototype, TileSize, VisualDefinition, VisualDefinitionKind,
     };
     use flux_core::PrototypeId;
-    use flux_world::{GridSize, WorldGrid};
+    use flux_world::{GridSize, TilePos, WorldGrid};
 
     use super::{build_world_render_snapshot, populate_world_debug_mvp};
 
@@ -338,7 +364,8 @@ mod tests {
         let mut world = WorldGrid::new(GridSize::new(64, 64)).expect("world should be created");
 
         populate_world_debug_mvp(&mut world, &registry).expect("population should succeed");
-        let snapshot = build_world_render_snapshot(&world, &registry);
+        let snapshot =
+            build_world_render_snapshot(&world, &registry).expect("snapshot build should succeed");
 
         assert!(!snapshot.solid_cells.is_empty());
         assert!(!snapshot.gas_cells.is_empty());
@@ -356,5 +383,23 @@ mod tests {
 
         assert!(rendered.contains("WorldDebugPopulateError"));
         assert!(rendered.contains("layer: solid"));
+    }
+
+    #[test]
+    fn snapshot_builder_returns_structured_error_for_missing_solid_prototype() {
+        let registry = registry_with_full_debug_content();
+        let mut world = WorldGrid::new(GridSize::new(4, 4)).expect("world should be created");
+        let missing_id = id("base:solid_cell/missing_for_snapshot_test");
+        world
+            .set_solid_cell_at(TilePos::new(1, 1), Some(missing_id.clone()))
+            .expect("set solid");
+
+        let error = build_world_render_snapshot(&world, &registry)
+            .expect_err("missing prototype must return error");
+        let rendered = error.to_string();
+
+        assert!(rendered.contains("WorldRenderSnapshotError"));
+        assert!(rendered.contains("layer: solid"));
+        assert!(rendered.contains(missing_id.as_str()));
     }
 }

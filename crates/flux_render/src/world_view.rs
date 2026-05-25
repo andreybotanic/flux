@@ -50,6 +50,7 @@ pub struct WorldRenderState {
     reset_camera_requested: bool,
     snapshot: WorldRenderSnapshot,
     sprites_dirty: bool,
+    grid_dirty: bool,
 }
 
 impl Default for WorldRenderState {
@@ -61,6 +62,7 @@ impl Default for WorldRenderState {
             reset_camera_requested: false,
             snapshot: WorldRenderSnapshot::default(),
             sprites_dirty: false,
+            grid_dirty: false,
         }
     }
 }
@@ -98,11 +100,13 @@ impl WorldRenderState {
         self.reset_camera_requested = true;
         self.snapshot = snapshot;
         self.sprites_dirty = true;
+        self.grid_dirty = true;
     }
 
     pub fn set_render_snapshot(&mut self, snapshot: WorldRenderSnapshot) {
         self.snapshot = snapshot;
         self.sprites_dirty = true;
+        self.grid_dirty = true;
     }
 
     #[must_use]
@@ -112,6 +116,16 @@ impl WorldRenderState {
 
     pub fn mark_sprites_clean(&mut self) {
         self.sprites_dirty = false;
+        self.grid_dirty = false;
+    }
+
+    #[must_use]
+    pub fn grid_dirty(&self) -> bool {
+        self.grid_dirty
+    }
+
+    pub fn mark_grid_clean(&mut self) {
+        self.grid_dirty = false;
     }
 
     pub fn hide_world(&mut self) {
@@ -119,6 +133,7 @@ impl WorldRenderState {
         self.reset_camera_requested = false;
         self.snapshot = WorldRenderSnapshot::default();
         self.sprites_dirty = true;
+        self.grid_dirty = true;
     }
 }
 
@@ -182,6 +197,8 @@ type WorldLayerSpriteQuery<'w, 's> = Query<
         With<StructureSpriteMarker>,
     )>,
 >;
+
+type GridLayerSpriteQuery<'w, 's> = Query<'w, 's, Entity, With<GridLineSpriteMarker>>;
 
 pub struct FluxRenderPlugin;
 
@@ -259,8 +276,8 @@ fn reset_world_camera_view(
     if let Projection::Orthographic(orthographic) = projection.as_mut() {
         orthographic.scale = controls.zoom_max;
     }
-    // Ensure grid/gas/tiles are rebuilt using the finalized initial camera scale.
-    render_state.sprites_dirty = true;
+    // Ensure grid is rebuilt using the finalized initial camera scale.
+    render_state.grid_dirty = true;
     render_state.reset_camera_requested = false;
 }
 
@@ -322,8 +339,8 @@ fn world_camera_zoom(
         }
     }
 
-    // Keep grid sampling stable while zoom changes by forcing a layer rebuild.
-    render_state.sprites_dirty = true;
+    // Keep grid sampling stable while zoom changes by rebuilding only the grid layer.
+    render_state.grid_dirty = true;
 }
 
 fn world_camera_pan_keyboard(
@@ -433,6 +450,7 @@ fn sync_sprite_layers(
     asset_server: Res<AssetServer>,
     world_camera_projection: Query<&Projection, With<WorldCamera>>,
     layer_sprites: WorldLayerSpriteQuery<'_, '_>,
+    grid_sprites: GridLayerSpriteQuery<'_, '_>,
 ) {
     if !render_state.is_visible() {
         for entity in &layer_sprites {
@@ -441,12 +459,8 @@ fn sync_sprite_layers(
         render_state.mark_sprites_clean();
         return;
     }
-    if !render_state.sprites_dirty() {
+    if !render_state.sprites_dirty() && !render_state.grid_dirty() {
         return;
-    }
-
-    for entity in &layer_sprites {
-        commands.entity(entity).despawn();
     }
 
     let pitch = render_state.tile_pitch();
@@ -454,17 +468,6 @@ fn sync_sprite_layers(
         render_state.mark_sprites_clean();
         return;
     };
-    let world_width = grid_size.width as f32 * pitch;
-    let world_height = grid_size.height as f32 * pitch;
-    let world_center = Vec2::new(world_width * 0.5, world_height * 0.5);
-
-    commands.spawn((
-        BackgroundSpriteMarker,
-        Sprite::from_color(WORLD_BACKGROUND_COLOR, Vec2::new(world_width, world_height)),
-        Transform::from_translation(Vec3::new(world_center.x, world_center.y, BACKGROUND_Z)),
-        Name::new("world_background"),
-    ));
-
     let min_pixel_world = world_camera_projection
         .single()
         .ok()
@@ -474,6 +477,90 @@ fn sync_sprite_layers(
         })
         .unwrap_or(0.001);
     let line_thickness = (pitch * WORLD_GRID_LINE_THICKNESS).max(min_pixel_world);
+
+    if render_state.sprites_dirty() {
+        for entity in &layer_sprites {
+            commands.entity(entity).despawn();
+        }
+
+        let world_width = grid_size.width as f32 * pitch;
+        let world_height = grid_size.height as f32 * pitch;
+        let world_center = Vec2::new(world_width * 0.5, world_height * 0.5);
+
+        commands.spawn((
+            BackgroundSpriteMarker,
+            Sprite::from_color(WORLD_BACKGROUND_COLOR, Vec2::new(world_width, world_height)),
+            Transform::from_translation(Vec3::new(world_center.x, world_center.y, BACKGROUND_Z)),
+            Name::new("world_background"),
+        ));
+
+        spawn_grid_layer(&mut commands, grid_size, pitch, line_thickness);
+
+        for cell in &render_state.render_snapshot().gas_cells {
+            let center = tile_to_world_center(cell.tile, pitch);
+            let intensity = gas_intensity_from_particles(cell.total_particles);
+            let srgb = cell.base_color.to_srgba();
+            let color = Color::srgba(srgb.red, srgb.green, srgb.blue, intensity);
+            commands.spawn((
+                GasCellSpriteMarker,
+                Sprite::from_color(color, Vec2::splat(pitch)),
+                Transform::from_translation(Vec3::new(center.x, center.y, GAS_Z)),
+                Name::new(format!("gas_sprite_{}_{}", cell.tile.x, cell.tile.y)),
+            ));
+        }
+
+        for cell in &render_state.render_snapshot().solid_cells {
+            ensure_asset_exists(&cell.image_path);
+            let mut sprite =
+                Sprite::from_image(asset_server.load(to_bevy_mod_asset_path(&cell.image_path)));
+            sprite.custom_size = Some(Vec2::splat(pitch));
+            let center = tile_to_world_center(cell.tile, pitch);
+            commands.spawn((
+                SolidCellSpriteMarker,
+                sprite,
+                Transform::from_translation(Vec3::new(center.x, center.y, SOLID_SPRITE_Z)),
+                Name::new(format!("solid_sprite_{}_{}", cell.tile.x, cell.tile.y)),
+            ));
+        }
+
+        for structure in &render_state.render_snapshot().structures {
+            ensure_asset_exists(&structure.image_path);
+            let mut sprite = Sprite::from_image(
+                asset_server.load(to_bevy_mod_asset_path(&structure.image_path)),
+            );
+            sprite.custom_size = Some(Vec2::new(
+                f32::from(structure.width) * pitch,
+                f32::from(structure.height) * pitch,
+            ));
+            let center = Vec2::new(
+                (structure.origin.x as f32 + f32::from(structure.width) * 0.5) * pitch,
+                (structure.origin.y as f32 + f32::from(structure.height) * 0.5) * pitch,
+            );
+            commands.spawn((
+                StructureSpriteMarker,
+                sprite,
+                Transform::from_translation(Vec3::new(center.x, center.y, STRUCTURE_SPRITE_Z)),
+                Name::new(format!(
+                    "structure_sprite_{}_{}",
+                    structure.origin.x, structure.origin.y
+                )),
+            ));
+        }
+
+        render_state.mark_sprites_clean();
+        return;
+    }
+
+    if render_state.grid_dirty() {
+        for entity in &grid_sprites {
+            commands.entity(entity).despawn();
+        }
+        spawn_grid_layer(&mut commands, grid_size, pitch, line_thickness);
+        render_state.mark_grid_clean();
+    }
+}
+
+fn spawn_grid_layer(commands: &mut Commands, grid_size: GridSize, pitch: f32, line_thickness: f32) {
     for (start, end) in grid_line_segments(grid_size, pitch) {
         let (center, size) = if (start.x - end.x).abs() < f32::EPSILON {
             (
@@ -493,58 +580,6 @@ fn sync_sprite_layers(
             Name::new("world_grid_line"),
         ));
     }
-
-    for cell in &render_state.render_snapshot().gas_cells {
-        let center = tile_to_world_center(cell.tile, pitch);
-        let intensity = gas_intensity_from_particles(cell.total_particles);
-        let srgb = cell.base_color.to_srgba();
-        let color = Color::srgba(srgb.red, srgb.green, srgb.blue, intensity);
-        commands.spawn((
-            GasCellSpriteMarker,
-            Sprite::from_color(color, Vec2::splat(pitch)),
-            Transform::from_translation(Vec3::new(center.x, center.y, GAS_Z)),
-            Name::new(format!("gas_sprite_{}_{}", cell.tile.x, cell.tile.y)),
-        ));
-    }
-
-    for cell in &render_state.render_snapshot().solid_cells {
-        ensure_asset_exists(&cell.image_path);
-        let mut sprite =
-            Sprite::from_image(asset_server.load(to_bevy_mod_asset_path(&cell.image_path)));
-        sprite.custom_size = Some(Vec2::splat(pitch));
-        let center = tile_to_world_center(cell.tile, pitch);
-        commands.spawn((
-            SolidCellSpriteMarker,
-            sprite,
-            Transform::from_translation(Vec3::new(center.x, center.y, SOLID_SPRITE_Z)),
-            Name::new(format!("solid_sprite_{}_{}", cell.tile.x, cell.tile.y)),
-        ));
-    }
-
-    for structure in &render_state.render_snapshot().structures {
-        ensure_asset_exists(&structure.image_path);
-        let mut sprite =
-            Sprite::from_image(asset_server.load(to_bevy_mod_asset_path(&structure.image_path)));
-        sprite.custom_size = Some(Vec2::new(
-            f32::from(structure.width) * pitch,
-            f32::from(structure.height) * pitch,
-        ));
-        let center = Vec2::new(
-            (structure.origin.x as f32 + f32::from(structure.width) * 0.5) * pitch,
-            (structure.origin.y as f32 + f32::from(structure.height) * 0.5) * pitch,
-        );
-        commands.spawn((
-            StructureSpriteMarker,
-            sprite,
-            Transform::from_translation(Vec3::new(center.x, center.y, STRUCTURE_SPRITE_Z)),
-            Name::new(format!(
-                "structure_sprite_{}_{}",
-                structure.origin.x, structure.origin.y
-            )),
-        ));
-    }
-
-    render_state.mark_sprites_clean();
 }
 
 fn ensure_asset_exists(image_path: &str) {

@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Once;
 use std::time::Duration;
 
+use bevy::app::AppExit;
 use bevy::asset::AssetPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -385,6 +386,7 @@ fn handle_ui_button_interactions(
     sim_state: Option<ResMut<FluxSimState>>,
     world_debug_content: Option<Res<FluxWorldDebugContent>>,
     world_render_state: Option<ResMut<WorldRenderState>>,
+    mut app_exit: MessageWriter<AppExit>,
     interactions: UiButtonInteractions<'_, '_>,
 ) {
     let Some(mut ui_state) = ui_state else {
@@ -446,13 +448,20 @@ fn handle_ui_button_interactions(
                             "RunWorld temporary S11B world population failed (continuing with partial world): {error}"
                         );
                     }
-                    (
-                        world.size(),
-                        world_debug::build_world_render_snapshot(
-                            world,
-                            &world_debug_content.registry,
-                        ),
-                    )
+                    let snapshot = match world_debug::build_world_render_snapshot(
+                        world,
+                        &world_debug_content.registry,
+                    ) {
+                        Ok(snapshot) => snapshot,
+                        Err(error) => {
+                            error!(
+                                "RunWorld failed while building render snapshot; shutting down app: {error}"
+                            );
+                            app_exit.write(AppExit::error());
+                            return;
+                        }
+                    };
+                    (world.size(), snapshot)
                 } else {
                     error!("RunWorld failed: world is missing after initialization");
                     continue;
