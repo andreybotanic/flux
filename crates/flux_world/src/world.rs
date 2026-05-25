@@ -3,65 +3,42 @@ use std::collections::HashMap;
 use flux_content::{ContentRegistry, TileSize};
 
 use crate::{
-    CellIndex, ChunkCoord, DirtyKind, GasLayer, GasMixture, GasPrototypeId, GridSize,
-    ParticleCount, SolidCellLayer, SolidCellPrototypeId, StructureInstance, StructureInstanceId,
-    StructureOccupancyIndex, StructurePlacementError, StructurePrototypeId, StructureStore,
-    TilePos, TileRect, WorldGridError,
+    CellIndex, GasLayer, GasMixture, GasPrototypeId, GridSize, ParticleCount, SolidCellLayer,
+    SolidCellPrototypeId, StructureInstance, StructureInstanceId, StructureOccupancyIndex,
+    StructurePlacementError, StructurePrototypeId, StructureStore, TilePos, WorldGridError,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChunkMeta {
-    pub coord: ChunkCoord,
-    pub bounds: TileRect,
-    pub render_dirty: bool,
-    pub save_dirty: bool,
-}
 
 #[derive(Debug, Clone)]
 pub struct WorldGrid {
     size: GridSize,
-    chunk_size: u32,
     solid_cells: SolidCellLayer,
     gases: GasLayer,
-    chunks: Vec<ChunkMeta>,
     structures: StructureStore,
     structure_occupancy: StructureOccupancyIndex,
     structure_sizes: HashMap<StructurePrototypeId, TileSize>,
-    chunk_cols: u32,
-    chunk_rows: u32,
 }
 
 impl WorldGrid {
-    pub fn new(size: GridSize, chunk_size: u32) -> Result<Self, WorldGridError> {
+    pub fn new(size: GridSize) -> Result<Self, WorldGridError> {
         if size.width == 0 || size.height == 0 {
             return Err(WorldGridError::InvalidGridSize {
                 width: size.width,
                 height: size.height,
             });
         }
-        if chunk_size == 0 {
-            return Err(WorldGridError::InvalidChunkSize { chunk_size });
-        }
 
         let cell_count = size.cell_count().ok_or(WorldGridError::CellCountOverflow {
             width: size.width,
             height: size.height,
         })?;
-        let chunk_cols = size.width.div_ceil(chunk_size);
-        let chunk_rows = size.height.div_ceil(chunk_size);
-        let chunks = build_chunks(size, chunk_size, chunk_cols, chunk_rows);
 
         Ok(Self {
             size,
-            chunk_size,
             solid_cells: SolidCellLayer::new(cell_count),
             gases: GasLayer::new(cell_count),
-            chunks,
             structures: StructureStore::new(),
             structure_occupancy: StructureOccupancyIndex::default(),
             structure_sizes: HashMap::new(),
-            chunk_cols,
-            chunk_rows,
         })
     }
 
@@ -71,28 +48,8 @@ impl WorldGrid {
     }
 
     #[must_use]
-    pub const fn chunk_size(&self) -> u32 {
-        self.chunk_size
-    }
-
-    #[must_use]
     pub fn cell_count(&self) -> usize {
         self.solid_cells.len()
-    }
-
-    #[must_use]
-    pub const fn chunk_cols(&self) -> u32 {
-        self.chunk_cols
-    }
-
-    #[must_use]
-    pub const fn chunk_rows(&self) -> u32 {
-        self.chunk_rows
-    }
-
-    #[must_use]
-    pub fn chunks(&self) -> &[ChunkMeta] {
-        &self.chunks
     }
 
     #[must_use]
@@ -122,7 +79,7 @@ impl WorldGrid {
         self.solid_cells
             .set(index.0, solid)
             .expect("index validated by cell_index");
-        self.mark_cell_dirty(pos, DirtyKind::RenderAndSave)
+        Ok(())
     }
 
     #[must_use]
@@ -144,7 +101,7 @@ impl WorldGrid {
             .get_mut(index.0)
             .expect("index validated by cell_index")
             .set_particles(gas, particles);
-        self.mark_cell_dirty(pos, DirtyKind::RenderAndSave)
+        Ok(())
     }
 
     #[must_use]
@@ -158,41 +115,6 @@ impl WorldGrid {
         let index = y.checked_mul(width)?.checked_add(x)?;
         let index = usize::try_from(index).ok()?;
         Some(CellIndex(index))
-    }
-
-    #[must_use]
-    pub fn chunk_coord_for_pos(&self, pos: TilePos) -> Option<ChunkCoord> {
-        if !self.size.contains(pos) {
-            return None;
-        }
-        Some(ChunkCoord {
-            x: pos.x / self.chunk_size,
-            y: pos.y / self.chunk_size,
-        })
-    }
-
-    pub fn mark_cell_dirty(
-        &mut self,
-        pos: TilePos,
-        dirty: DirtyKind,
-    ) -> Result<(), WorldGridError> {
-        let coord = self
-            .chunk_coord_for_pos(pos)
-            .ok_or_else(|| WorldGridError::position_out_of_bounds(pos, self.size))?;
-        let chunk_index = self.chunk_index(coord)?;
-        let chunk = self
-            .chunks
-            .get_mut(chunk_index)
-            .expect("chunk index validated by chunk_index");
-        match dirty {
-            DirtyKind::Render => chunk.render_dirty = true,
-            DirtyKind::Save => chunk.save_dirty = true,
-            DirtyKind::RenderAndSave => {
-                chunk.render_dirty = true;
-                chunk.save_dirty = true;
-            }
-        }
-        Ok(())
     }
 
     pub fn refresh_structure_sizes_from_registry(&mut self, registry: &ContentRegistry) -> usize {
@@ -235,11 +157,6 @@ impl WorldGrid {
         });
         for pos in &occupied {
             self.structure_occupancy.occupy(*pos, instance_id);
-            self.mark_cell_dirty(*pos, DirtyKind::RenderAndSave)
-                .map_err(|_| StructurePlacementError::OutOfBounds {
-                    pos_x: pos.x,
-                    pos_y: pos.y,
-                })?;
         }
         Ok(instance_id)
     }
@@ -255,11 +172,6 @@ impl WorldGrid {
         let occupied = self.footprint_tiles(instance.origin, instance.size)?;
         for pos in occupied {
             self.structure_occupancy.clear_tile(pos);
-            self.mark_cell_dirty(pos, DirtyKind::RenderAndSave)
-                .map_err(|_| StructurePlacementError::OutOfBounds {
-                    pos_x: pos.x,
-                    pos_y: pos.y,
-                })?;
         }
         Ok(())
     }
@@ -295,58 +207,10 @@ impl WorldGrid {
         }
         Ok(positions)
     }
-
-    fn chunk_index(&self, coord: ChunkCoord) -> Result<usize, WorldGridError> {
-        if coord.x >= self.chunk_cols || coord.y >= self.chunk_rows {
-            return Err(WorldGridError::chunk_out_of_bounds(
-                coord,
-                self.chunk_cols,
-                self.chunk_rows,
-            ));
-        }
-        let index_u64 = u64::from(coord.y) * u64::from(self.chunk_cols) + u64::from(coord.x);
-        usize::try_from(index_u64).map_err(|_| {
-            WorldGridError::chunk_out_of_bounds(coord, self.chunk_cols, self.chunk_rows)
-        })
-    }
-}
-
-fn build_chunks(
-    size: GridSize,
-    chunk_size: u32,
-    chunk_cols: u32,
-    chunk_rows: u32,
-) -> Vec<ChunkMeta> {
-    let mut chunks = Vec::with_capacity(
-        usize::try_from(u64::from(chunk_cols) * u64::from(chunk_rows))
-            .expect("chunk count always fits in usize because cells fit in usize"),
-    );
-
-    for chunk_y in 0..chunk_rows {
-        for chunk_x in 0..chunk_cols {
-            let origin_x = chunk_x * chunk_size;
-            let origin_y = chunk_y * chunk_size;
-            let width = chunk_size.min(size.width - origin_x);
-            let height = chunk_size.min(size.height - origin_y);
-            chunks.push(ChunkMeta {
-                coord: ChunkCoord {
-                    x: chunk_x,
-                    y: chunk_y,
-                },
-                bounds: TileRect::new(TilePos::new(origin_x, origin_y), width, height),
-                render_dirty: false,
-                save_dirty: false,
-            });
-        }
-    }
-
-    chunks
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use flux_content::TileSize;
     use flux_core::PrototypeId;
 
@@ -370,29 +234,33 @@ mod tests {
 
     #[test]
     fn creates_grid_with_expected_cell_count() {
-        let world = WorldGrid::new(GridSize::new(64, 64), 16).expect("world should be created");
+        let world = WorldGrid::new(GridSize::new(64, 64)).expect("world should be created");
         assert_eq!(world.cell_count(), 64 * 64);
     }
 
     #[test]
-    fn rejects_zero_width_height_or_chunk_size() {
+    fn dense_layers_match_grid_area() {
+        let world = WorldGrid::new(GridSize::new(33, 17)).expect("world should be created");
+        let expected = 33 * 17;
+        assert_eq!(world.solid_cells.len(), expected);
+        assert_eq!(world.gases.len(), expected);
+    }
+
+    #[test]
+    fn rejects_zero_width_or_height() {
         assert!(matches!(
-            WorldGrid::new(GridSize::new(0, 4), 16),
+            WorldGrid::new(GridSize::new(0, 4)),
             Err(WorldGridError::InvalidGridSize { .. })
         ));
         assert!(matches!(
-            WorldGrid::new(GridSize::new(4, 0), 16),
+            WorldGrid::new(GridSize::new(4, 0)),
             Err(WorldGridError::InvalidGridSize { .. })
-        ));
-        assert!(matches!(
-            WorldGrid::new(GridSize::new(4, 4), 0),
-            Err(WorldGridError::InvalidChunkSize { .. })
         ));
     }
 
     #[test]
     fn converts_tile_pos_to_row_major_index() {
-        let world = WorldGrid::new(GridSize::new(10, 10), 4).expect("world should be created");
+        let world = WorldGrid::new(GridSize::new(10, 10)).expect("world should be created");
         assert_eq!(world.cell_index(TilePos::new(0, 0)), Some(CellIndex(0)));
         assert_eq!(world.cell_index(TilePos::new(1, 0)), Some(CellIndex(1)));
         assert_eq!(world.cell_index(TilePos::new(0, 1)), Some(CellIndex(10)));
@@ -401,67 +269,37 @@ mod tests {
 
     #[test]
     fn rejects_out_of_bounds_tile_pos() {
-        let world = WorldGrid::new(GridSize::new(4, 4), 2).expect("world should be created");
+        let world = WorldGrid::new(GridSize::new(4, 4)).expect("world should be created");
         assert_eq!(world.cell_index(TilePos::new(4, 0)), None);
         assert_eq!(world.cell_index(TilePos::new(0, 4)), None);
-        assert_eq!(world.chunk_coord_for_pos(TilePos::new(4, 0)), None);
     }
 
     #[test]
-    fn computes_chunk_coords() {
-        let world = WorldGrid::new(GridSize::new(64, 64), 16).expect("world should be created");
-        assert_eq!(
-            world.chunk_coord_for_pos(TilePos::new(0, 0)),
-            Some(ChunkCoord::new(0, 0))
-        );
-        assert_eq!(
-            world.chunk_coord_for_pos(TilePos::new(17, 3)),
-            Some(ChunkCoord::new(1, 0))
-        );
-        assert_eq!(
-            world.chunk_coord_for_pos(TilePos::new(63, 63)),
-            Some(ChunkCoord::new(3, 3))
-        );
-    }
+    fn set_cell_and_gas_report_structured_out_of_bounds_errors() {
+        let mut world = WorldGrid::new(GridSize::new(2, 2)).expect("world should be created");
+        let oxygen = gas_id("base:gas/oxygen");
+        let solid = structure_id("base:solid_cell/rock");
 
-    #[test]
-    fn chunks_cover_all_cells_exactly_once() {
-        let world = WorldGrid::new(GridSize::new(33, 17), 8).expect("world should be created");
-        let mut covered = HashSet::new();
-        for chunk in world.chunks() {
-            for y in chunk.bounds.origin.y..(chunk.bounds.origin.y + chunk.bounds.height) {
-                for x in chunk.bounds.origin.x..(chunk.bounds.origin.x + chunk.bounds.width) {
-                    let pos = TilePos::new(x, y);
-                    assert!(
-                        chunk.bounds.contains(pos),
-                        "chunk bounds must contain every iterated position"
-                    );
-                    assert!(
-                        covered.insert(pos),
-                        "every cell must belong to exactly one chunk"
-                    );
-                }
-            }
-        }
-        assert_eq!(covered.len(), world.cell_count());
-    }
+        let solid_error = world
+            .set_solid_cell_at(TilePos::new(3, 0), Some(solid))
+            .expect_err("solid set should fail");
+        assert!(matches!(
+            solid_error,
+            WorldGridError::PositionOutOfBounds { .. }
+        ));
 
-    #[test]
-    fn edge_chunks_have_correct_bounds() {
-        let world = WorldGrid::new(GridSize::new(18, 10), 8).expect("world should be created");
-        assert_eq!(world.chunk_cols(), 3);
-        assert_eq!(world.chunk_rows(), 2);
-
-        let last = world.chunks().last().expect("must have chunks");
-        assert_eq!(last.coord, ChunkCoord::new(2, 1));
-        assert_eq!(last.bounds.origin, TilePos::new(16, 8));
-        assert_eq!(last.bounds.width, 2);
-        assert_eq!(last.bounds.height, 2);
+        let gas_error = world
+            .set_gas_particles(TilePos::new(0, 3), oxygen, ParticleCount(1))
+            .expect_err("gas set should fail");
+        assert!(matches!(
+            gas_error,
+            WorldGridError::PositionOutOfBounds { .. }
+        ));
     }
 
     #[test]
     fn structures_can_be_placed_and_removed() {
-        let mut world = WorldGrid::new(GridSize::new(16, 16), 8).expect("world should be created");
+        let mut world = WorldGrid::new(GridSize::new(16, 16)).expect("world should be created");
         let prototype = structure_id("base:structure/pump");
         set_test_structure_size(
             &mut world,
@@ -495,7 +333,7 @@ mod tests {
 
     #[test]
     fn rejects_structure_outside_world() {
-        let mut world = WorldGrid::new(GridSize::new(8, 8), 4).expect("world should be created");
+        let mut world = WorldGrid::new(GridSize::new(8, 8)).expect("world should be created");
         let prototype = structure_id("base:structure/pump");
         set_test_structure_size(
             &mut world,
@@ -515,7 +353,7 @@ mod tests {
 
     #[test]
     fn rejects_overlapping_structures() {
-        let mut world = WorldGrid::new(GridSize::new(16, 16), 4).expect("world should be created");
+        let mut world = WorldGrid::new(GridSize::new(16, 16)).expect("world should be created");
         let prototype = structure_id("base:structure/pump");
         set_test_structure_size(
             &mut world,
@@ -538,13 +376,13 @@ mod tests {
 
     #[test]
     fn unoccupied_cells_return_none() {
-        let world = WorldGrid::new(GridSize::new(8, 8), 4).expect("world should be created");
+        let world = WorldGrid::new(GridSize::new(8, 8)).expect("world should be created");
         assert_eq!(world.structure_occupancy().get(TilePos::new(2, 2)), None);
     }
 
     #[test]
     fn cell_gas_total_particles_stays_correct_after_add_and_remove() {
-        let mut world = WorldGrid::new(GridSize::new(8, 8), 4).expect("world should be created");
+        let mut world = WorldGrid::new(GridSize::new(8, 8)).expect("world should be created");
         let pos = TilePos::new(2, 3);
         let oxygen = gas_id("base:gas/oxygen");
         let hydrogen = gas_id("base:gas/hydrogen");

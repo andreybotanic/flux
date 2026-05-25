@@ -620,7 +620,6 @@ fn run_list_scenarios() -> i32 {
 
 fn run_scenario_by_id(scenario_id: &PrototypeId) -> i32 {
     const SCENARIO_FIXED_STEP: Duration = Duration::from_millis(16);
-    const SCENARIO_CHUNK_SIZE: u32 = 16;
 
     init_cli_bevy_logging();
 
@@ -637,7 +636,7 @@ fn run_scenario_by_id(scenario_id: &PrototypeId) -> i32 {
         }
     };
 
-    let mut runtime = match SimRuntime::new(SCENARIO_FIXED_STEP, SCENARIO_CHUNK_SIZE) {
+    let mut runtime = match SimRuntime::new(SCENARIO_FIXED_STEP) {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("failed to initialize simulation runtime: {error}");

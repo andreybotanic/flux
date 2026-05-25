@@ -1,16 +1,11 @@
 use thiserror::Error;
 
-use crate::{
-    ChunkCoord, GasPrototypeId, GridSize, StructureInstanceId, StructurePrototypeId, TilePos,
-};
+use crate::{GasPrototypeId, GridSize, StructureInstanceId, StructurePrototypeId, TilePos};
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum WorldGridError {
     #[error("invalid grid size: width and height must be greater than zero, got {width}x{height}")]
     InvalidGridSize { width: u32, height: u32 },
-
-    #[error("invalid chunk size: chunk size must be greater than zero, got {chunk_size}")]
-    InvalidChunkSize { chunk_size: u32 },
 
     #[error("grid cell count overflow for {width}x{height}")]
     CellCountOverflow { width: u32, height: u32 },
@@ -22,16 +17,6 @@ pub enum WorldGridError {
         width: u32,
         height: u32,
     },
-
-    #[error(
-        "chunk coordinate ({coord_x},{coord_y}) is out of bounds for chunk grid {chunk_cols}x{chunk_rows}"
-    )]
-    ChunkCoordOutOfBounds {
-        coord_x: u32,
-        coord_y: u32,
-        chunk_cols: u32,
-        chunk_rows: u32,
-    },
 }
 
 impl WorldGridError {
@@ -42,16 +27,6 @@ impl WorldGridError {
             pos_y: pos.y,
             width: size.width,
             height: size.height,
-        }
-    }
-
-    #[must_use]
-    pub fn chunk_out_of_bounds(coord: ChunkCoord, chunk_cols: u32, chunk_rows: u32) -> Self {
-        Self::ChunkCoordOutOfBounds {
-            coord_x: coord.x,
-            coord_y: coord.y,
-            chunk_cols,
-            chunk_rows,
         }
     }
 }

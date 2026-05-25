@@ -162,7 +162,7 @@ mod tests {
     };
 
     fn runtime() -> SimRuntime {
-        SimRuntime::new(Duration::from_millis(16), 16).expect("runtime should be created")
+        SimRuntime::new(Duration::from_millis(16)).expect("runtime should be created")
     }
 
     #[test]

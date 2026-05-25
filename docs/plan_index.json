@@ -276,7 +276,7 @@
     },
     {
       "id": "S07",
-      "title": "WorldGrid SoA + chunk metadata",
+      "title": "WorldGrid SoA foundation",
       "file": "docs/stages/S07_WORLD_GRID_CHUNK_META.md",
       "depends_on": [
         "S02"
@@ -287,7 +287,7 @@
         "S06"
       ],
       "status": "planned",
-      "goal": "Создать модель мира в плотных массивах с chunk metadata, но без физической симуляции."
+      "goal": "Create dense-array WorldGrid model without chunk-based world organization and without physical simulation."
     },
     {
       "id": "S08",

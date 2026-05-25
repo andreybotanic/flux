@@ -1,4 +1,4 @@
-﻿# S11 — World Render MVP + remove dirty chunks
+﻿# S11 — World Render MVP (dense grid)
 
 ## Depends on
 
@@ -14,29 +14,27 @@
 
 ## Цель этапа
 
-Добавить минимальный рендер мира, где обновления визуала привязаны к dirty chunks.
-
+Добавить минимальный рендер мира для dense WorldGrid без chunk metadata.
 
 ## Требования к реализации
 
 - Добавить минимальный render adapter.
 - Отрисовать placeholder grid/world.
-- Использовать `ChunkMeta.render_dirty` для визуальных обновлений.
-- Добавить debug overlay или diagnostic log dirty chunks.
+- Обновлять визуал по dense grid данным мира (без chunk lookup API).
+- Добавить debug overlay или diagnostic log по обновленным клеткам/областям.
 
 ## Запрещено
 
 - Не добавлять физику.
 - Не добавлять GPU compute.
-- Не использовать dirty chunks для пропуска симуляции.
+- Не добавлять chunk-based организацию мира обратно.
 
 ## Ручная проверка
 
 1. Запустить app.
 2. Создать мир через debug command или сценарий, если S09 уже выполнен.
 3. Изменить несколько клеток.
-4. Увидеть обновление соответствующих областей или dirty chunk logs.
-
+4. Увидеть обновление соответствующих областей или диагностический лог без chunk metadata.
 
 ## Automated checks
 

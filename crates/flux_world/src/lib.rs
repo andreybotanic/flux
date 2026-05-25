@@ -14,7 +14,7 @@ pub use structures::{
     StructureInstance, StructureInstanceId, StructureOccupancyIndex, StructureStore,
 };
 pub use types::{
-    CellIndex, ChunkCoord, DirtyKind, GasPrototypeId, GridSize, SolidCellPrototypeId,
-    StructurePrototypeId, SubstancePrototypeId, TilePos, TileRect,
+    CellIndex, GasPrototypeId, GridSize, SolidCellPrototypeId, StructurePrototypeId,
+    SubstancePrototypeId, TilePos,
 };
-pub use world::{ChunkMeta, WorldGrid};
+pub use world::WorldGrid;

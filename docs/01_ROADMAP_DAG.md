@@ -1,6 +1,7 @@
 ﻿# FluxEngine Rewrite — DAG и индекс этапов
 
-Этот документ описывает актуальный roadmap после исправления зависимости сценариев от fixed tick/runtime.
+Этот документ описывает актуальный roadmap после исправления зависимости сценариев от fixed tick/runtime
+и удаления chunk-based world organization (S10A architectural revision, без нового stage ID).
 
 ## Важная миграционная пометка
 
@@ -87,11 +88,11 @@ S15 -> S19
 | S04 | `docs/stages/S04_CONTENT_REGISTRY_MVP.md` | Content registry MVP | S03 | S07 |
 | S05 | `docs/stages/S05_BASE_MOD_MVP.md` | Base mod MVP | S04 | S10 |
 | S06 | `docs/stages/S06_EXTERNAL_TEST_MOD.md` | External test mod + patching | S05 | S07, S08, S10 |
-| S07 | `docs/stages/S07_WORLD_GRID_CHUNK_META.md` | WorldGrid SoA + chunk metadata | S02 | S04, S05, S06 |
+| S07 | `docs/stages/S07_WORLD_GRID_CHUNK_META.md` | WorldGrid SoA foundation | S02 | S04, S05, S06 |
 | S08 | `docs/stages/S08_FIXED_TICK_AND_COMMANDS.md` | Fixed tick + command/event loop | S07 | S10 |
 | S09 | `docs/stages/S09_SCENARIO_DSL_RUNTIME_MVP.md` | Scenario DSL runtime MVP | S03, S08 | S10, S11 |
 | S10 | `docs/stages/S10_UI_REGISTRY_MVP.md` | UI registry MVP | S04 | S05, S06, S08, S09 |
-| S11 | `docs/stages/S11_RENDER_CHUNK_DIRTY_MVP.md` | Chunk-based render dirty MVP | S01, S07 | S09, S10, S12, S14 |
+| S11 | `docs/stages/S11_RENDER_MVP.md` | Render MVP (dense grid) | S01, S07 | S09, S10, S12, S14 |
 | S12 | `docs/stages/S12_SCENARIO_RUNNER_UI_SCREENSHOT.md` | Scenario runner with UI, screenshot and diagnostic logs | S09, S10, S11 | S13, S14 |
 | S13 | `docs/stages/S13_SAVE_LOAD_MVP.md` | Save/load MVP | S08, S09 | S11, S14 |
 | S14 | `docs/stages/S14_CPU_SIM_TOY.md` | CPU toy simulation | S08 | S11, S12, S13, S16 |

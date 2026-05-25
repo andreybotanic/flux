@@ -7,7 +7,6 @@ use crate::{CommandQueue, EventQueue, FixedTick, SimCommand, SimError, SimEvent}
 #[derive(Debug, Clone)]
 pub struct SimRuntime {
     fixed_tick: FixedTick,
-    chunk_size: u32,
     initialized: bool,
     tick_counter: u64,
     world: Option<WorldGrid>,
@@ -17,14 +16,9 @@ pub struct SimRuntime {
 }
 
 impl SimRuntime {
-    pub fn new(fixed_step: Duration, chunk_size: u32) -> Result<Self, SimError> {
-        if chunk_size == 0 {
-            return Err(SimError::InvalidChunkSize { chunk_size });
-        }
-
+    pub fn new(fixed_step: Duration) -> Result<Self, SimError> {
         Ok(Self {
             fixed_tick: FixedTick::new(fixed_step)?,
-            chunk_size,
             initialized: false,
             tick_counter: 0,
             world: None,
@@ -37,11 +31,6 @@ impl SimRuntime {
     #[must_use]
     pub fn fixed_tick(&self) -> &FixedTick {
         &self.fixed_tick
-    }
-
-    #[must_use]
-    pub fn chunk_size(&self) -> u32 {
-        self.chunk_size
     }
 
     #[must_use]
@@ -123,13 +112,10 @@ impl SimRuntime {
         }
 
         let size = GridSize::new(width, height);
-        let world = WorldGrid::new(size, self.chunk_size).map_err(|source| {
-            SimError::WorldCreationFailed {
-                width,
-                height,
-                chunk_size: self.chunk_size,
-                source,
-            }
+        let world = WorldGrid::new(size).map_err(|source| SimError::WorldCreationFailed {
+            width,
+            height,
+            source,
         })?;
         self.world = Some(world);
         self.world_seed = Some(seed);
@@ -167,7 +153,7 @@ mod tests {
     use crate::{SimCommand, SimError, SimEvent, SimRuntime};
 
     fn runtime() -> SimRuntime {
-        SimRuntime::new(Duration::from_millis(16), 16).expect("runtime should be created")
+        SimRuntime::new(Duration::from_millis(16)).expect("runtime should be created")
     }
 
     #[test]
