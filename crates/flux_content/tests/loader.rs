@@ -165,6 +165,10 @@ base = "*"
         ladder.prototype.visual.image_path().as_str(),
         "textures/structure/patched.png"
     );
+    assert_eq!(
+        registry.structure_visual_mod_id(&ladder.prototype.id),
+        Some("test_content_mod")
+    );
 
     let patch_sources: Vec<&str> = registry
         .applied_patches_for(&ladder.prototype.id)
@@ -304,6 +308,10 @@ test_content_mod = "*"
         "another_test_mod.structure.ladder"
     );
     assert_eq!(ladder.prototype.size.width, 3);
+    assert_eq!(
+        registry.structure_visual_mod_id(&ladder.prototype.id),
+        Some("base")
+    );
 
     let patch_sources: Vec<&str> = registry
         .applied_patches_for(&ladder.prototype.id)

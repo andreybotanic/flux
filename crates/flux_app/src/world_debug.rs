@@ -192,11 +192,14 @@ pub(crate) fn build_world_render_snapshot(
                         prototype: solid.clone(),
                     }
                 })?;
+                let visual_mod_id = registry
+                    .solid_cell_visual_mod_id(&solid)
+                    .unwrap_or(record.source.mod_id.as_str());
                 snapshot.solid_cells.push(SolidCellSprite {
                     tile: pos,
                     image_path: format!(
                         "{}/{}",
-                        record.source.mod_id,
+                        visual_mod_id,
                         record.prototype.visual.image_path().as_str()
                     ),
                 });
@@ -227,13 +230,16 @@ pub(crate) fn build_world_render_snapshot(
                 prototype: structure.prototype.clone(),
             }
         })?;
+        let visual_mod_id = registry
+            .structure_visual_mod_id(&structure.prototype)
+            .unwrap_or(record.source.mod_id.as_str());
         snapshot.structures.push(StructureSprite {
             origin: structure.origin,
             width: structure.size.width,
             height: structure.size.height,
             image_path: format!(
                 "{}/{}",
-                record.source.mod_id,
+                visual_mod_id,
                 record.prototype.visual.image_path().as_str()
             ),
         });
@@ -261,8 +267,9 @@ fn stable_hue_from_key(key: &str) -> f32 {
 #[cfg(test)]
 mod tests {
     use flux_content::{
-        AssetPath, ContentRegistry, LocalizationKey, PrototypeSource, SingleSpriteVisual,
-        SolidCellPrototype, StructurePrototype, TileSize, VisualDefinition, VisualDefinitionKind,
+        AssetPath, ContentRegistry, LocalizationKey, PrototypePatch, PrototypePatchBody,
+        PrototypeSource, SingleSpriteVisual, SolidCellPrototype, StructurePrototype,
+        StructurePrototypePatch, TileSize, VisualDefinition, VisualDefinitionKind,
     };
     use flux_core::PrototypeId;
     use flux_world::{GridSize, TilePos, WorldGrid};
@@ -273,6 +280,13 @@ mod tests {
         PrototypeSource {
             mod_id: "base".to_owned(),
             file: "mods/base/content/test.ron".to_owned(),
+        }
+    }
+
+    fn patch_source() -> PrototypeSource {
+        PrototypeSource {
+            mod_id: "test_content_mod".to_owned(),
+            file: "mods/test_content_mod/content/patches/base_building_gas_pump.ron".to_owned(),
         }
     }
 
@@ -292,7 +306,7 @@ mod tests {
         }
     }
 
-    fn registry_with_full_debug_content() -> ContentRegistry {
+    fn registry_with_full_debug_content_unfrozen() -> ContentRegistry {
         let mut registry = ContentRegistry::new();
         registry
             .add_solid_cell(
@@ -353,6 +367,11 @@ mod tests {
                 source(),
             )
             .expect("structure prototype should be accepted");
+        registry
+    }
+
+    fn registry_with_full_debug_content() -> ContentRegistry {
+        let mut registry = registry_with_full_debug_content_unfrozen();
         registry.freeze();
         registry
     }
@@ -400,5 +419,36 @@ mod tests {
         assert!(rendered.contains("WorldRenderSnapshotError"));
         assert!(rendered.contains("layer: solid"));
         assert!(rendered.contains(missing_id.as_str()));
+    }
+
+    #[test]
+    fn snapshot_uses_patch_mod_namespace_for_structure_visual() {
+        let mut registry = registry_with_full_debug_content_unfrozen();
+        let target = id("base:building/gas_pump");
+        let patch = PrototypePatch {
+            target: target.clone(),
+            body: PrototypePatchBody::Structure(StructurePrototypePatch {
+                display_name: None,
+                size: None,
+                visual: Some(visual("textures/structure/patched_from_mod.png")),
+            }),
+        };
+        registry
+            .apply_patch(patch, patch_source())
+            .expect("patch should be accepted");
+        registry.freeze();
+
+        let mut world = WorldGrid::new(GridSize::new(16, 16)).expect("world should be created");
+        world.refresh_structure_sizes_from_registry(&registry);
+        world
+            .place_structure(target, TilePos::new(4, 4))
+            .expect("structure placement should succeed");
+
+        let snapshot =
+            build_world_render_snapshot(&world, &registry).expect("snapshot build should succeed");
+        assert!(
+            snapshot.structures.iter().any(|entry| entry.image_path
+                == "test_content_mod/textures/structure/patched_from_mod.png")
+        );
     }
 }

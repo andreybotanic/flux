@@ -27,7 +27,9 @@ pub struct ContentRegistry {
     prototype_index: BTreeMap<PrototypeId, RegisteredPrototype>,
     substances: BTreeMap<PrototypeId, SubstanceRecord>,
     solid_cells: BTreeMap<PrototypeId, SolidCellRecord>,
+    solid_cell_visual_mod_ids: BTreeMap<PrototypeId, String>,
     structures: BTreeMap<PrototypeId, StructureRecord>,
+    structure_visual_mod_ids: BTreeMap<PrototypeId, String>,
     gases: BTreeMap<PrototypeId, GasRecord>,
     applied_patches: BTreeMap<PrototypeId, Vec<AppliedPrototypePatch>>,
 }
@@ -45,7 +47,9 @@ impl ContentRegistry {
             prototype_index: BTreeMap::new(),
             substances: BTreeMap::new(),
             solid_cells: BTreeMap::new(),
+            solid_cell_visual_mod_ids: BTreeMap::new(),
             structures: BTreeMap::new(),
+            structure_visual_mod_ids: BTreeMap::new(),
             gases: BTreeMap::new(),
             applied_patches: BTreeMap::new(),
         }
@@ -125,18 +129,28 @@ impl ContentRegistry {
                 Self::apply_patch_body(&mut record.prototype, body, &source, &patch.target)?;
             }
             PrototypePatchBody::SolidCell(body) => {
+                let updates_visual = body.visual.is_some();
                 let record = self
                     .solid_cells
                     .get_mut(&patch.target)
                     .expect("index in sync");
                 Self::apply_patch_body(&mut record.prototype, body, &source, &patch.target)?;
+                if updates_visual {
+                    self.solid_cell_visual_mod_ids
+                        .insert(patch.target.clone(), source.mod_id.clone());
+                }
             }
             PrototypePatchBody::Structure(body) => {
+                let updates_visual = body.visual.is_some();
                 let record = self
                     .structures
                     .get_mut(&patch.target)
                     .expect("index in sync");
                 Self::apply_patch_body(&mut record.prototype, body, &source, &patch.target)?;
+                if updates_visual {
+                    self.structure_visual_mod_ids
+                        .insert(patch.target.clone(), source.mod_id.clone());
+                }
             }
             PrototypePatchBody::Gas(body) => {
                 let record = self.gases.get_mut(&patch.target).expect("index in sync");
@@ -185,8 +199,11 @@ impl ContentRegistry {
 
         let id = prototype.id.clone();
         let source_for_index = source.clone();
+        let visual_mod_id = source.mod_id.clone();
         self.structures
             .insert(id.clone(), StructureRecord { prototype, source });
+        self.structure_visual_mod_ids
+            .insert(id.clone(), visual_mod_id);
         self.prototype_index.insert(
             id,
             RegisteredPrototype {
@@ -208,8 +225,11 @@ impl ContentRegistry {
 
         let id = prototype.id.clone();
         let source_for_index = source.clone();
+        let visual_mod_id = source.mod_id.clone();
         self.solid_cells
             .insert(id.clone(), SolidCellRecord { prototype, source });
+        self.solid_cell_visual_mod_ids
+            .insert(id.clone(), visual_mod_id);
         self.prototype_index.insert(
             id,
             RegisteredPrototype {
@@ -274,6 +294,11 @@ impl ContentRegistry {
         self.solid_cells.get(id)
     }
 
+    #[must_use]
+    pub fn solid_cell_visual_mod_id(&self, id: &PrototypeId) -> Option<&str> {
+        self.solid_cell_visual_mod_ids.get(id).map(String::as_str)
+    }
+
     pub fn structures(&self) -> impl Iterator<Item = &StructureRecord> {
         self.structures.values()
     }
@@ -281,6 +306,11 @@ impl ContentRegistry {
     #[must_use]
     pub fn structure(&self, id: &PrototypeId) -> Option<&StructureRecord> {
         self.structures.get(id)
+    }
+
+    #[must_use]
+    pub fn structure_visual_mod_id(&self, id: &PrototypeId) -> Option<&str> {
+        self.structure_visual_mod_ids.get(id).map(String::as_str)
     }
 
     pub fn gases(&self) -> impl Iterator<Item = &GasRecord> {
