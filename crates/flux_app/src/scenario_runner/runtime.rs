@@ -449,6 +449,7 @@ fn create_world(
     let snapshot = world_debug::build_world_render_snapshot(world, &world_debug_content.registry)
         .map_err(|error| format!("world render snapshot failed: {error}"))?;
     world_render_state.show_world(world.size(), 1.0, snapshot);
+    ui_state.dispatcher.reset_menu_stack_to_root();
     *screen_mode = FluxScreenMode::World;
     ui_state.needs_rebuild = false;
     runtime_state.world_loaded = true;
@@ -566,7 +567,7 @@ fn pause_simulation(
 ) -> Result<(), String> {
     runtime_state.sim_paused = true;
     if step.delay_ms > 0 {
-        runtime_state.waiting_until = Some(now + Duration::from_millis(step.delay_ms));
+        runtime_state.waiting_until = Some(wait_deadline(now, step.delay_ms)?);
         runtime_state.resume_after_wait = true;
     }
     Ok(())
@@ -577,8 +578,14 @@ fn wait_realtime(
     step: &WaitRealtimeStep,
     now: Duration,
 ) -> Result<(), String> {
-    runtime_state.waiting_until = Some(now + Duration::from_millis(step.delay_ms));
+    runtime_state.waiting_until = Some(wait_deadline(now, step.delay_ms)?);
     Ok(())
+}
+
+pub(super) fn wait_deadline(now: Duration, delay_ms: u64) -> Result<Duration, String> {
+    let delay = Duration::from_millis(delay_ms);
+    now.checked_add(delay)
+        .ok_or_else(|| format!("wait delay overflow: now={now:?} delay_ms={delay_ms}"))
 }
 
 fn resume_simulation(
@@ -663,10 +670,12 @@ fn apply_ui_action(
 ) -> Result<(), String> {
     match action {
         BindingAction::OpenMenu(menu_id) => {
-            ui_state
-                .dispatcher
-                .open_menu(menu_id, &ui_state.known_menus)
-                .map_err(|error| error.to_string())?;
+            if ui_state.dispatcher.menu_stack().current() != menu_id {
+                ui_state
+                    .dispatcher
+                    .open_menu(menu_id, &ui_state.known_menus)
+                    .map_err(|error| error.to_string())?;
+            }
             runtime_state.world_open = false;
             if runtime_state.world_loaded {
                 runtime_state.sim_paused = true;

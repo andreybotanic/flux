@@ -44,6 +44,10 @@ impl UiMenuStack {
         true
     }
 
+    pub fn reset_to_root(&mut self) {
+        self.stack.truncate(1);
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.stack.len()
@@ -89,5 +93,9 @@ impl BuiltinUiActionDispatcher {
     #[must_use]
     pub fn back_menu(&mut self) -> bool {
         self.menu_stack.back()
+    }
+
+    pub fn reset_menu_stack_to_root(&mut self) {
+        self.menu_stack.reset_to_root();
     }
 }

@@ -7,7 +7,9 @@ use flux_ui::{
     UiMenuDefinition, UiMenuId, UiRegistry, UiWidgetId, WidgetKind, WidgetNode,
 };
 
-use super::runtime::{append_visual_delay_after_step, append_visual_delay_after_step_if_needed};
+use super::runtime::{
+    append_visual_delay_after_step, append_visual_delay_after_step_if_needed, wait_deadline,
+};
 use super::validation::{
     ScenarioValidationError, ScenarioValidationState, simulation_ticks_for_delay,
     validate_scenario_steps,
@@ -388,6 +390,23 @@ fn back_on_root_menu_returns_to_world_and_resumes_simulation() {
 }
 
 #[test]
+fn open_menu_main_after_world_does_not_duplicate_root_menu() {
+    let registry = build_registry();
+    let mut state = validation_state(&registry);
+    let scenario = ScenarioDefinition {
+        id: PrototypeId::parse("test_scenarios:scenario/open_main_no_duplicate").expect("id"),
+        steps: vec![
+            ScenarioStep::ClickStep(ClickStep(widget_id("base:widget/main/run_world"))),
+            ScenarioStep::OpenMenuStep(OpenMenuStep(menu_id("base:menu/main"))),
+            ScenarioStep::ClickStep(ClickStep(widget_id("base:widget/main/back"))),
+            ScenarioStep::WaitTicksStep(WaitTicksStep(1)),
+        ],
+    };
+
+    validate_scenario_steps(&scenario, &registry, &mut state).expect("scenario must validate");
+}
+
+#[test]
 fn simulation_time_uses_floor_tick_conversion() {
     let runtime = flux_sim::SimRuntime::new(Duration::from_millis(16)).expect("runtime");
     assert_eq!(simulation_ticks_for_delay(&runtime, 1000), 62);
@@ -429,4 +448,18 @@ fn visual_delay_is_added_when_more_steps_exist() {
     let actual =
         append_visual_delay_after_step_if_needed(Some(Duration::from_millis(300)), now, 50, true);
     assert_eq!(actual, Some(Duration::from_millis(350)));
+}
+
+#[test]
+fn wait_deadline_adds_delay_without_overflow() {
+    let now = Duration::from_secs(5);
+    let deadline = wait_deadline(now, 250).expect("deadline");
+    assert_eq!(deadline, Duration::from_millis(5_250));
+}
+
+#[test]
+fn wait_deadline_returns_error_on_overflow() {
+    let now = Duration::MAX;
+    let error = wait_deadline(now, 1).expect_err("overflow must fail");
+    assert!(error.contains("wait delay overflow"));
 }

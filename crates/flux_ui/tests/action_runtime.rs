@@ -66,4 +66,12 @@ fn builtin_dispatcher_supports_open_back_and_log() {
     assert!(!no_back_result);
     assert_eq!(dispatcher.menu_stack().current(), &main_menu);
     assert_eq!(dispatcher.menu_stack().len(), 1);
+
+    dispatcher
+        .open_menu(&settings_menu, &known_menus)
+        .expect("open menu must succeed");
+    assert_eq!(dispatcher.menu_stack().len(), 2);
+    dispatcher.reset_menu_stack_to_root();
+    assert_eq!(dispatcher.menu_stack().current(), &main_menu);
+    assert_eq!(dispatcher.menu_stack().len(), 1);
 }

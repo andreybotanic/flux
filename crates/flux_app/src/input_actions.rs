@@ -165,6 +165,7 @@ impl ExecutableInputAction for RunWorldAction {
         context
             .world_render_state
             .show_world(world_size, 1.0, snapshot);
+        context.ui_state.dispatcher.reset_menu_stack_to_root();
         *context.screen_mode = FluxScreenMode::World;
         context.ui_state.needs_rebuild = false;
         context.sim_state.world_loaded = true;

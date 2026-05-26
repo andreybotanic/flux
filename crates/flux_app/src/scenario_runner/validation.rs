@@ -124,12 +124,14 @@ fn validate_step(
                     format!("menu `{}` is not registered", step.0),
                 ));
             }
-            state
-                .dispatcher
-                .open_menu(&step.0, &state.known_menus)
-                .map_err(|error| {
-                    validation_error_kind(step_index, "OpenMenu", format!("{error}"))
-                })?;
+            if state.dispatcher.menu_stack().current() != &step.0 {
+                state
+                    .dispatcher
+                    .open_menu(&step.0, &state.known_menus)
+                    .map_err(|error| {
+                        validation_error_kind(step_index, "OpenMenu", format!("{error}"))
+                    })?;
+            }
             state.world_open = false;
             if state.world_loaded {
                 state.sim_paused = true;
@@ -246,10 +248,14 @@ fn apply_click_action_for_validation(
 ) -> Result<(), ScenarioValidationError> {
     match action {
         BindingAction::OpenMenu(menu_id) => {
-            state
-                .dispatcher
-                .open_menu(&menu_id, &state.known_menus)
-                .map_err(|error| validation_error_kind(step_index, "Click", format!("{error}")))?;
+            if state.dispatcher.menu_stack().current() != &menu_id {
+                state
+                    .dispatcher
+                    .open_menu(&menu_id, &state.known_menus)
+                    .map_err(|error| {
+                        validation_error_kind(step_index, "Click", format!("{error}"))
+                    })?;
+            }
             state.world_open = false;
             if state.world_loaded {
                 state.sim_paused = true;
@@ -268,6 +274,7 @@ fn apply_click_action_for_validation(
         }
         BindingAction::DiagnosticLog(_) => {}
         BindingAction::RunWorld => {
+            state.dispatcher.reset_menu_stack_to_root();
             state.world_loaded = true;
             state.world_open = true;
             state.sim_paused = false;
