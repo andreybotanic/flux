@@ -198,7 +198,7 @@ pub(crate) fn build_world_render_snapshot(
                 snapshot.solid_cells.push(SolidCellSprite {
                     tile: pos,
                     image_path: format!(
-                        "{}/{}",
+                        "mods/{}/assets/{}",
                         visual_mod_id,
                         record.prototype.visual.image_path().as_str()
                     ),
@@ -238,7 +238,7 @@ pub(crate) fn build_world_render_snapshot(
             width: structure.size.width,
             height: structure.size.height,
             image_path: format!(
-                "{}/{}",
+                "mods/{}/assets/{}",
                 visual_mod_id,
                 record.prototype.visual.image_path().as_str()
             ),
@@ -446,9 +446,7 @@ mod tests {
 
         let snapshot =
             build_world_render_snapshot(&world, &registry).expect("snapshot build should succeed");
-        assert!(
-            snapshot.structures.iter().any(|entry| entry.image_path
-                == "test_content_mod/textures/structure/patched_from_mod.png")
-        );
+        assert!(snapshot.structures.iter().any(|entry| entry.image_path
+            == "mods/test_content_mod/assets/textures/structure/patched_from_mod.png"));
     }
 }

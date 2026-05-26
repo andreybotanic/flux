@@ -1,6 +1,6 @@
 use bevy::prelude::{AssetServer, Commands, Component, Name, Sprite, Transform, Vec2, Vec3};
 
-use super::common::{tile_to_world_center, to_bevy_mod_asset_path};
+use super::common::{normalize_bevy_asset_path, tile_to_world_center};
 use super::state::SolidCellSprite;
 
 const SOLID_SPRITE_Z: f32 = -0.10;
@@ -16,7 +16,7 @@ pub(crate) fn spawn_solid_layer(
 ) {
     for cell in solid_cells {
         let mut sprite =
-            Sprite::from_image(asset_server.load(to_bevy_mod_asset_path(&cell.image_path)));
+            Sprite::from_image(asset_server.load(normalize_bevy_asset_path(&cell.image_path)));
         sprite.custom_size = Some(Vec2::splat(pitch));
         let center = tile_to_world_center(cell.tile, pitch);
         commands.spawn((

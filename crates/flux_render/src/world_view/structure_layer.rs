@@ -1,7 +1,7 @@
 use bevy::math::Vec2;
 use bevy::prelude::{AssetServer, Commands, Component, Name, Sprite, Transform, Vec3};
 
-use super::common::to_bevy_mod_asset_path;
+use super::common::normalize_bevy_asset_path;
 use super::state::StructureSprite;
 
 const STRUCTURE_SPRITE_Z: f32 = 0.0;
@@ -17,7 +17,7 @@ pub(crate) fn spawn_structure_layer(
 ) {
     for structure in structures {
         let mut sprite =
-            Sprite::from_image(asset_server.load(to_bevy_mod_asset_path(&structure.image_path)));
+            Sprite::from_image(asset_server.load(normalize_bevy_asset_path(&structure.image_path)));
         let (center, size) = structure_sprite_bounds(structure, pitch);
         sprite.custom_size = Some(size);
         commands.spawn((
