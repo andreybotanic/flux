@@ -1,9 +1,6 @@
 use std::collections::BTreeSet;
 
-use flux_ui::{
-    BuiltinUiActionDispatcher, UiAction, UiActionContext, UiActionDispatcher, UiActionResult,
-    UiMenuId,
-};
+use flux_ui::{BindingAction, BuiltinUiActionDispatcher, UiAction, UiMenuId};
 use ron::{Options, extensions::Extensions};
 
 #[test]
@@ -25,15 +22,23 @@ fn deserializes_builtin_actions_from_ron() {
         .expect("back action should parse");
     assert_eq!(back, UiAction::BackMenu);
 
+    assert!(
+        options
+            .from_str::<UiAction>("DiagnosticLog(\"hello\")")
+            .is_err()
+    );
+    assert!(options.from_str::<UiAction>("RunWorld").is_err());
+    assert!(options.from_str::<UiAction>("ToggleSimulation").is_err());
+
     let log = options
-        .from_str::<UiAction>("DiagnosticLog(\"hello\")")
-        .expect("log action should parse");
-    assert_eq!(log, UiAction::DiagnosticLog("hello".to_owned()));
+        .from_str::<BindingAction>("DiagnosticLog(\"hello\")")
+        .expect("button log action should parse");
+    assert_eq!(log, BindingAction::DiagnosticLog("hello".to_owned()));
 
     let run_world = options
-        .from_str::<UiAction>("RunWorld")
-        .expect("run world action should parse");
-    assert_eq!(run_world, UiAction::RunWorld);
+        .from_str::<BindingAction>("RunWorld")
+        .expect("button run world action should parse");
+    assert_eq!(run_world, BindingAction::RunWorld);
 }
 
 #[test]
@@ -46,44 +51,19 @@ fn builtin_dispatcher_supports_open_back_and_log() {
     known_menus.insert(main_menu.clone());
     known_menus.insert(settings_menu.clone());
 
-    let mut logs = Vec::new();
-    {
-        let mut logger = |message: &str| logs.push(message.to_owned());
-        let mut context = UiActionContext {
-            known_menus: &known_menus,
-            diagnostic_log: &mut logger,
-        };
+    dispatcher
+        .open_menu(&settings_menu, &known_menus)
+        .expect("open menu must succeed");
+    assert_eq!(dispatcher.menu_stack().current(), &settings_menu);
+    assert_eq!(dispatcher.menu_stack().len(), 2);
 
-        let open_result = dispatcher
-            .dispatch(&UiAction::OpenMenu(settings_menu.clone()), &mut context)
-            .expect("open menu must succeed");
-        assert_eq!(open_result, UiActionResult::MenuChanged);
-        assert_eq!(dispatcher.menu_stack().current(), &settings_menu);
-        assert_eq!(dispatcher.menu_stack().len(), 2);
+    let back_result = dispatcher.back_menu();
+    assert!(back_result);
+    assert_eq!(dispatcher.menu_stack().current(), &main_menu);
+    assert_eq!(dispatcher.menu_stack().len(), 1);
 
-        let back_result = dispatcher
-            .dispatch(&UiAction::BackMenu, &mut context)
-            .expect("back must succeed");
-        assert_eq!(back_result, UiActionResult::MenuChanged);
-        assert_eq!(dispatcher.menu_stack().current(), &main_menu);
-        assert_eq!(dispatcher.menu_stack().len(), 1);
-
-        let no_back_result = dispatcher
-            .dispatch(&UiAction::BackMenu, &mut context)
-            .expect("back on root menu should be noop");
-        assert_eq!(no_back_result, UiActionResult::Noop);
-        assert_eq!(dispatcher.menu_stack().current(), &main_menu);
-        assert_eq!(dispatcher.menu_stack().len(), 1);
-
-        let log_result = dispatcher
-            .dispatch(&UiAction::DiagnosticLog("clicked".to_owned()), &mut context)
-            .expect("log must succeed");
-        assert_eq!(log_result, UiActionResult::Noop);
-
-        let run_world_result = dispatcher
-            .dispatch(&UiAction::RunWorld, &mut context)
-            .expect("run world action must succeed");
-        assert_eq!(run_world_result, UiActionResult::RunWorldRequested);
-    }
-    assert_eq!(logs, vec!["clicked".to_owned()]);
+    let no_back_result = dispatcher.back_menu();
+    assert!(!no_back_result);
+    assert_eq!(dispatcher.menu_stack().current(), &main_menu);
+    assert_eq!(dispatcher.menu_stack().len(), 1);
 }

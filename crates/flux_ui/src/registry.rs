@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::UiRegistryError;
 use crate::types::{
-    UiAction, UiExtensionDefinition, UiMenuDefinition, UiMenuId, UiSource, UiWidgetId, WidgetKind,
-    WidgetNode,
+    BindingAction, UiExtensionDefinition, UiMenuDefinition, UiMenuId, UiSource, UiWidgetId,
+    WidgetKind, WidgetNode,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,7 +150,7 @@ impl UiRegistry {
             let menu_id = &menu_record.definition.id;
             menu_record.definition.root.visit(&mut |node| {
                 if let WidgetKind::Button(button) = &node.kind
-                    && let UiAction::OpenMenu(target_menu) = &button.action
+                    && let BindingAction::OpenMenu(target_menu) = &button.action
                     && !known_menus.contains(target_menu)
                 {
                     errors.push(UiRegistryError::OpenMenuTargetNotFound {

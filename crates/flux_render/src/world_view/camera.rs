@@ -54,6 +54,7 @@ impl Plugin for WorldCameraPlugin {
                 (
                     sync_world_camera_lifecycle,
                     reset_world_camera_view,
+                    apply_requested_world_camera_view,
                     world_camera_zoom,
                     world_camera_pan_keyboard,
                     world_camera_pan_drag,
@@ -180,6 +181,43 @@ fn world_camera_zoom(
     }
 
     render_state.mark_grid_dirty();
+}
+
+fn apply_requested_world_camera_view(
+    mut render_state: ResMut<WorldRenderState>,
+    controls: Res<WorldCameraControlsConfig>,
+    mut camera_query: Query<(&mut Transform, &mut Projection), With<WorldCamera>>,
+) {
+    if !render_state.is_visible() {
+        return;
+    }
+    let Some(size) = render_state.grid_size() else {
+        return;
+    };
+    let Ok((mut transform, mut projection)) = camera_query.single_mut() else {
+        return;
+    };
+
+    if let Some((x, y)) = render_state.take_pending_camera_pivot() {
+        let center = clamp_camera_center_to_world_bounds(
+            Vec2::new(
+                (x as f32 + 0.5) * render_state.tile_pitch(),
+                (y as f32 + 0.5) * render_state.tile_pitch(),
+            ),
+            size,
+            render_state.tile_pitch(),
+        );
+        transform.translation.x = center.x;
+        transform.translation.y = center.y;
+        render_state.mark_grid_dirty();
+    }
+
+    if let Some(zoom) = render_state.take_pending_camera_zoom()
+        && let Projection::Orthographic(orthographic) = projection.as_mut()
+    {
+        orthographic.scale = zoom.clamp(controls.zoom_min, controls.zoom_max);
+        render_state.mark_grid_dirty();
+    }
 }
 
 fn world_camera_pan_keyboard(

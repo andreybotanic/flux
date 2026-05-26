@@ -54,7 +54,7 @@ pub struct TextWidget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ButtonWidget {
     pub text: LocalizationKey,
-    pub action: UiAction,
+    pub action: BindingAction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,8 +92,15 @@ pub enum UiDefinition {
 pub enum UiAction {
     OpenMenu(UiMenuId),
     BackMenu,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BindingAction {
+    OpenMenu(UiMenuId),
+    BackMenu,
     DiagnosticLog(String),
     RunWorld,
+    ToggleSimulation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

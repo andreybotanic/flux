@@ -2,14 +2,7 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
-use crate::types::{UiAction, UiMenuId};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UiActionResult {
-    Noop,
-    MenuChanged,
-    RunWorldRequested,
-}
+use crate::types::UiMenuId;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum UiRuntimeError {
@@ -17,19 +10,6 @@ pub enum UiRuntimeError {
         "UiRuntimeError:\n  action: dispatch\n  action_kind: OpenMenu\n  target_menu: {target_menu}\n  reason: target menu not found"
     )]
     OpenMenuTargetMissing { target_menu: Box<str> },
-}
-
-pub struct UiActionContext<'a> {
-    pub known_menus: &'a BTreeSet<UiMenuId>,
-    pub diagnostic_log: &'a mut dyn FnMut(&str),
-}
-
-pub trait UiActionDispatcher {
-    fn dispatch(
-        &mut self,
-        action: &UiAction,
-        context: &mut UiActionContext<'_>,
-    ) -> Result<UiActionResult, UiRuntimeError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,36 +71,23 @@ impl BuiltinUiActionDispatcher {
     pub fn menu_stack(&self) -> &UiMenuStack {
         &self.menu_stack
     }
-}
 
-impl UiActionDispatcher for BuiltinUiActionDispatcher {
-    fn dispatch(
+    pub fn open_menu(
         &mut self,
-        action: &UiAction,
-        context: &mut UiActionContext<'_>,
-    ) -> Result<UiActionResult, UiRuntimeError> {
-        match action {
-            UiAction::OpenMenu(menu_id) => {
-                if !context.known_menus.contains(menu_id) {
-                    return Err(UiRuntimeError::OpenMenuTargetMissing {
-                        target_menu: menu_id.to_string().into(),
-                    });
-                }
-                self.menu_stack.push(menu_id.clone());
-                Ok(UiActionResult::MenuChanged)
-            }
-            UiAction::BackMenu => {
-                if self.menu_stack.back() {
-                    Ok(UiActionResult::MenuChanged)
-                } else {
-                    Ok(UiActionResult::Noop)
-                }
-            }
-            UiAction::DiagnosticLog(message) => {
-                (context.diagnostic_log)(message);
-                Ok(UiActionResult::Noop)
-            }
-            UiAction::RunWorld => Ok(UiActionResult::RunWorldRequested),
+        menu_id: &UiMenuId,
+        known_menus: &BTreeSet<UiMenuId>,
+    ) -> Result<(), UiRuntimeError> {
+        if !known_menus.contains(menu_id) {
+            return Err(UiRuntimeError::OpenMenuTargetMissing {
+                target_menu: menu_id.to_string().into(),
+            });
         }
+        self.menu_stack.push(menu_id.clone());
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn back_menu(&mut self) -> bool {
+        self.menu_stack.back()
     }
 }

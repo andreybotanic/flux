@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 
 mod helpers;
+mod input_actions;
+mod input_bindings;
+mod scenario_runner;
 mod world_debug;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::sync::Once;
 use std::time::Duration;
 
 use bevy::app::AppExit;
@@ -18,12 +20,17 @@ use bevy::window::{Window, WindowPlugin};
 use flux_core::{NamespacedId, PrototypeId};
 use flux_mod_loader::DiscoveredMod;
 use flux_render::{FluxRenderPlugin, WorldRenderState};
-use flux_sim::{SimCommand, SimRuntime};
+use flux_sim::SimRuntime;
 use flux_ui::{
-    BuiltinUiActionDispatcher, ContainerLayout, UiAction, UiActionContext, UiActionDispatcher,
-    UiActionResult, UiMenuDefinition, UiMenuId, WidgetKind, WidgetNode,
+    BindingAction, BuiltinUiActionDispatcher, ContainerLayout, UiMenuDefinition, UiMenuId,
+    WidgetKind, WidgetNode,
 };
 use helpers::{find_scenario_by_id, format_error_block, print_discovered_mod, print_patch_trail};
+use input_actions::{
+    ActionExecutionFlow, InputActionRegistry, default_input_action_registry, execute_binding_action,
+};
+use input_bindings::{default_input_bindings, handle_input_bindings};
+use scenario_runner::ScenarioRunConfig;
 
 #[cfg(test)]
 use helpers::ScenarioLookupError;
@@ -34,7 +41,10 @@ enum RunMode {
     ListMods,
     ListContent,
     ListScenarios,
-    RunScenario { scenario_id: PrototypeId },
+    RunScenario {
+        scenario_id: PrototypeId,
+        visual_delay_ms: u64,
+    },
     Windowed,
     Headless,
 }
@@ -45,13 +55,20 @@ enum CliError {
     ConflictingArguments,
     MissingArgumentValue(&'static str),
     InvalidScenarioId(String),
+    InvalidScenarioVisualDelay(String),
+    ScenarioVisualDelayRequiresRunScenario,
 }
 
 #[derive(Component)]
 struct FluxUiRoot;
 
 #[derive(Component, Clone)]
-struct FluxUiButtonAction(UiAction);
+struct FluxUiButtonAction(BindingAction);
+
+#[derive(Message, Clone)]
+struct UiButtonPressed {
+    action: BindingAction,
+}
 
 #[derive(Component)]
 struct FluxUiCamera;
@@ -73,6 +90,8 @@ enum FluxScreenMode {
 #[derive(Resource)]
 struct FluxSimState {
     runtime: SimRuntime,
+    world_loaded: bool,
+    simulation_paused: bool,
 }
 
 #[derive(Resource)]
@@ -81,7 +100,7 @@ struct FluxWorldDebugContent {
     registry: flux_content::ContentRegistry,
 }
 
-type UiButtonInteractions<'w, 's> = Query<
+type UiButtonInteractionChanges<'w, 's> = Query<
     'w,
     's,
     (&'static Interaction, &'static FluxUiButtonAction),
@@ -114,8 +133,11 @@ fn main() {
             let exit_code = run_list_scenarios();
             std::process::exit(exit_code);
         }
-        RunMode::RunScenario { scenario_id } => {
-            let exit_code = run_scenario_by_id(&scenario_id);
+        RunMode::RunScenario {
+            scenario_id,
+            visual_delay_ms,
+        } => {
+            let exit_code = run_scenario_by_id(&scenario_id, visual_delay_ms);
             std::process::exit(exit_code);
         }
         RunMode::Windowed => run_windowed(),
@@ -130,6 +152,7 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
     let mut wants_list_content = false;
     let mut wants_list_scenarios = false;
     let mut scenario_id: Option<PrototypeId> = None;
+    let mut scenario_visual_delay_ms: Option<u64> = None;
 
     let mut index = 0usize;
     while index < args.len() {
@@ -147,6 +170,16 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
                 let parsed = PrototypeId::parse(value)
                     .map_err(|_| CliError::InvalidScenarioId(value.clone()))?;
                 scenario_id = Some(parsed);
+                index += 1;
+            }
+            "--scenario-visual-delay-ms" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or(CliError::MissingArgumentValue("--scenario-visual-delay-ms"))?;
+                let parsed = value
+                    .parse::<u64>()
+                    .map_err(|_| CliError::InvalidScenarioVisualDelay(value.clone()))?;
+                scenario_visual_delay_ms = Some(parsed);
                 index += 1;
             }
             other => return Err(CliError::UnknownArgument(other.to_owned())),
@@ -181,8 +214,15 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
         return Ok(RunMode::ListScenarios);
     }
 
+    if scenario_visual_delay_ms.is_some() && scenario_id.is_none() {
+        return Err(CliError::ScenarioVisualDelayRequiresRunScenario);
+    }
+
     if let Some(scenario_id) = scenario_id {
-        return Ok(RunMode::RunScenario { scenario_id });
+        return Ok(RunMode::RunScenario {
+            scenario_id,
+            visual_delay_ms: scenario_visual_delay_ms.unwrap_or(0),
+        });
     }
 
     if wants_headless {
@@ -195,6 +235,7 @@ fn parse_run_mode(args: &[String]) -> Result<RunMode, CliError> {
 fn run_windowed() {
     let asset_root = resolve_asset_root();
     let mut app = App::new();
+    app.add_message::<UiButtonPressed>();
     app.add_plugins(
         DefaultPlugins
             .set(AssetPlugin {
@@ -234,7 +275,9 @@ fn run_windowed() {
         Update,
         (
             sync_ui_camera_activity,
-            handle_ui_button_interactions,
+            handle_input_bindings,
+            emit_ui_button_press_events,
+            handle_ui_button_actions,
             rebuild_flux_ui_if_needed,
         ),
     );
@@ -300,7 +343,11 @@ fn setup_sim_runtime(mut commands: Commands) {
     let runtime = SimRuntime::new(FIXED_STEP).unwrap_or_else(|error| {
         panic!("windowed startup failed: cannot create simulation runtime: {error}")
     });
-    commands.insert_resource(FluxSimState { runtime });
+    commands.insert_resource(FluxSimState {
+        runtime,
+        world_loaded: false,
+        simulation_paused: false,
+    });
     commands.insert_resource(FluxScreenMode::Menu);
 }
 
@@ -347,6 +394,8 @@ fn setup_flux_ui_runtime(mut commands: Commands) {
         known_menus,
         needs_rebuild: true,
     });
+    commands.insert_resource(default_input_action_registry());
+    commands.insert_resource(default_input_bindings());
 
     let content_report = flux_content::load_content_registry(&report.valid_mods, resolved_order);
     if !content_report.errors.is_empty() {
@@ -380,15 +429,34 @@ fn resolve_initial_menu(known_menus: &BTreeSet<UiMenuId>) -> Result<UiMenuId, St
     ))
 }
 
-fn handle_ui_button_interactions(
+#[allow(clippy::too_many_arguments)]
+fn emit_ui_button_press_events(
+    mut pressed_events: MessageWriter<UiButtonPressed>,
+    interactions: UiButtonInteractionChanges<'_, '_>,
+) {
+    for (interaction, button_action) in &interactions {
+        if *interaction == Interaction::Pressed {
+            pressed_events.write(UiButtonPressed {
+                action: button_action.0.clone(),
+            });
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_ui_button_actions(
+    action_registry: Option<Res<InputActionRegistry>>,
     ui_state: Option<ResMut<FluxUiState>>,
     screen_mode: Option<ResMut<FluxScreenMode>>,
     sim_state: Option<ResMut<FluxSimState>>,
     world_debug_content: Option<Res<FluxWorldDebugContent>>,
     world_render_state: Option<ResMut<WorldRenderState>>,
     mut app_exit: MessageWriter<AppExit>,
-    interactions: UiButtonInteractions<'_, '_>,
+    mut pressed_events: MessageReader<UiButtonPressed>,
 ) {
+    let Some(action_registry) = action_registry else {
+        return;
+    };
     let Some(mut ui_state) = ui_state else {
         return;
     };
@@ -404,80 +472,22 @@ fn handle_ui_button_interactions(
     let Some(mut world_render_state) = world_render_state else {
         return;
     };
-    if *screen_mode == FluxScreenMode::World {
-        return;
-    }
-
-    for (interaction, button_action) in &interactions {
-        if *interaction != Interaction::Pressed {
+    for pressed in pressed_events.read() {
+        if *screen_mode == FluxScreenMode::World {
             continue;
         }
-
-        let known_menus = ui_state.known_menus.clone();
-        let mut diagnostic_logger = |message: &str| info!("ui action log: {message}");
-        let mut context = UiActionContext {
-            known_menus: &known_menus,
-            diagnostic_log: &mut diagnostic_logger,
-        };
-
-        match ui_state.dispatcher.dispatch(&button_action.0, &mut context) {
-            Ok(UiActionResult::MenuChanged) => {
-                ui_state.needs_rebuild = true;
-            }
-            Ok(UiActionResult::Noop) => {}
-            Ok(UiActionResult::RunWorldRequested) => {
-                if let Err(error) = sim_state.runtime.enqueue_command(SimCommand::CreateWorld {
-                    width: 64,
-                    height: 64,
-                    seed: 1,
-                }) {
-                    error!("RunWorld failed to enqueue CreateWorld command: {error}");
-                    continue;
-                }
-                if let Err(error) = sim_state.runtime.initialize() {
-                    error!("RunWorld failed to initialize simulation runtime: {error}");
-                    continue;
-                }
-                let (world_size, render_snapshot) = if let Some(world) =
-                    sim_state.runtime.world_mut()
-                {
-                    if let Err(error) =
-                        world_debug::populate_world_debug_mvp(world, &world_debug_content.registry)
-                    {
-                        error!(
-                            "RunWorld temporary S11B world population failed (continuing with partial world): {error}"
-                        );
-                    }
-                    let snapshot = match world_debug::build_world_render_snapshot(
-                        world,
-                        &world_debug_content.registry,
-                    ) {
-                        Ok(snapshot) => snapshot,
-                        Err(error) => {
-                            error!(
-                                "RunWorld failed while building render snapshot; shutting down app: {error}"
-                            );
-                            app_exit.write(AppExit::error());
-                            return;
-                        }
-                    };
-                    (world.size(), snapshot)
-                } else {
-                    error!("RunWorld failed: world is missing after initialization");
-                    continue;
-                };
-
-                world_render_state.show_world(world_size, 1.0, render_snapshot);
-                *screen_mode = FluxScreenMode::World;
-                ui_state.needs_rebuild = false;
-                info!(
-                    "world view activated: size={}x{} seed={}",
-                    world_size.width,
-                    world_size.height,
-                    sim_state.runtime.world_seed().unwrap_or_default()
-                );
-            }
-            Err(error) => error!("ui action dispatch failed: {error}"),
+        if execute_binding_action(
+            &pressed.action,
+            &action_registry,
+            &mut ui_state,
+            &mut screen_mode,
+            &mut sim_state,
+            &world_debug_content,
+            &mut world_render_state,
+        ) == ActionExecutionFlow::Stop
+        {
+            app_exit.write(AppExit::error());
+            return;
         }
     }
 }
@@ -779,11 +789,7 @@ fn run_list_scenarios() -> i32 {
     0
 }
 
-fn run_scenario_by_id(scenario_id: &PrototypeId) -> i32 {
-    const SCENARIO_FIXED_STEP: Duration = Duration::from_millis(16);
-
-    init_cli_bevy_logging();
-
+fn run_scenario_by_id(scenario_id: &PrototypeId, visual_delay_ms: u64) -> i32 {
     let scenarios = match load_scenarios_from_mods() {
         Ok(scenarios) => scenarios,
         Err(exit_code) => return exit_code,
@@ -797,42 +803,7 @@ fn run_scenario_by_id(scenario_id: &PrototypeId) -> i32 {
         }
     };
 
-    let mut runtime = match SimRuntime::new(SCENARIO_FIXED_STEP) {
-        Ok(runtime) => runtime,
-        Err(error) => {
-            eprintln!("failed to initialize simulation runtime: {error}");
-            return 1;
-        }
-    };
-
-    match flux_scenario::run_scenario(&mut runtime, &scenario.definition) {
-        Ok(summary) => {
-            info!(
-                "scenario_id={} scenario finished steps={} final_tick={}",
-                summary.scenario_id, summary.executed_steps, summary.final_tick
-            );
-            0
-        }
-        Err(error) => {
-            eprintln!("{error}");
-            1
-        }
-    }
-}
-
-fn init_cli_bevy_logging() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        use bevy::log::tracing_subscriber::prelude::*;
-
-        let env_filter = bevy::log::tracing_subscriber::EnvFilter::new("info,wgpu=warn,naga=warn");
-        let fmt_layer = bevy::log::tracing_subscriber::fmt::layer();
-        let subscriber = bevy::log::tracing_subscriber::registry()
-            .with(env_filter)
-            .with(fmt_layer);
-        bevy::log::tracing::subscriber::set_global_default(subscriber)
-            .expect("bevy tracing subscriber should initialize once");
-    });
+    scenario_runner::run_scenario_windowed(scenario, ScenarioRunConfig { visual_delay_ms })
 }
 
 fn load_scenarios_from_mods() -> Result<Vec<flux_scenario::LoadedScenario>, i32> {
@@ -867,7 +838,7 @@ impl std::fmt::Display for CliError {
             CliError::UnknownArgument(argument) => {
                 write!(
                     f,
-                    "unknown argument: {argument}. Supported args: --version, -V, --headless, --list-mods, --list-content, --list-scenarios, --run-scenario <id>"
+                    "unknown argument: {argument}. Supported args: --version, -V, --headless, --list-mods, --list-content, --list-scenarios, --run-scenario <id>, --scenario-visual-delay-ms <ms>"
                 )
             }
             CliError::ConflictingArguments => {
@@ -885,6 +856,14 @@ impl std::fmt::Display for CliError {
                     "invalid scenario id `{value}`, expected namespace:path format"
                 )
             }
+            CliError::InvalidScenarioVisualDelay(value) => write!(
+                f,
+                "invalid value for --scenario-visual-delay-ms `{value}`, expected non-negative integer milliseconds"
+            ),
+            CliError::ScenarioVisualDelayRequiresRunScenario => write!(
+                f,
+                "--scenario-visual-delay-ms can be used only together with --run-scenario <id>"
+            ),
         }
     }
 }
@@ -946,7 +925,25 @@ mod tests {
             ]),
             Ok(RunMode::RunScenario {
                 scenario_id: PrototypeId::parse("test_scenarios:scenario/bootstrap_smoke")
-                    .expect("valid id")
+                    .expect("valid id"),
+                visual_delay_ms: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_run_scenario_with_visual_delay_flag() {
+        assert_eq!(
+            parse_run_mode(&[
+                "--run-scenario".to_owned(),
+                "test_scenarios:scenario/bootstrap_smoke".to_owned(),
+                "--scenario-visual-delay-ms".to_owned(),
+                "250".to_owned(),
+            ]),
+            Ok(RunMode::RunScenario {
+                scenario_id: PrototypeId::parse("test_scenarios:scenario/bootstrap_smoke")
+                    .expect("valid id"),
+                visual_delay_ms: 250,
             })
         );
     }
@@ -1001,6 +998,19 @@ mod tests {
         assert_eq!(
             parse_run_mode(&["--run-scenario".to_owned(), "invalid".to_owned()]),
             Err(CliError::InvalidScenarioId("invalid".to_owned()))
+        );
+        assert_eq!(
+            parse_run_mode(&["--scenario-visual-delay-ms".to_owned(), "100".to_owned()]),
+            Err(CliError::ScenarioVisualDelayRequiresRunScenario)
+        );
+        assert_eq!(
+            parse_run_mode(&[
+                "--run-scenario".to_owned(),
+                "test_scenarios:scenario/bootstrap_smoke".to_owned(),
+                "--scenario-visual-delay-ms".to_owned(),
+                "bad".to_owned(),
+            ]),
+            Err(CliError::InvalidScenarioVisualDelay("bad".to_owned()))
         );
     }
 

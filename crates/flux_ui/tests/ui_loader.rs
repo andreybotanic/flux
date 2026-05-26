@@ -117,7 +117,7 @@ UiExtension(
             assert_eq!(button.text.as_str(), "$example_ui.debug");
             assert_eq!(
                 button.action,
-                flux_ui::UiAction::OpenMenu(flux_ui::UiMenuId(
+                flux_ui::BindingAction::OpenMenu(flux_ui::UiMenuId(
                     flux_core::NamespacedId::parse("example_ui:menu/debug").expect("id")
                 ))
             );

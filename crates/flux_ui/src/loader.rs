@@ -49,7 +49,7 @@ enum ParsedWidgetNode {
     Button {
         id: crate::types::UiWidgetId,
         text: crate::types::LocalizationKey,
-        action: crate::types::UiAction,
+        action: crate::types::BindingAction,
     },
     ExtensionPoint {
         id: crate::types::UiWidgetId,

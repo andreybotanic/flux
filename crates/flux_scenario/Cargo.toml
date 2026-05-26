@@ -9,14 +9,12 @@ authors.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-enum_dispatch = "0.3"
 flux_core.workspace = true
 flux_mod_loader.workspace = true
-flux_sim.workspace = true
+flux_ui.workspace = true
 ron = "0.8"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
-tracing = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

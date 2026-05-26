@@ -56,26 +56,3 @@ pub enum ScenarioLoadError {
         duplicate_file: Box<str>,
     },
 }
-
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum ScenarioRunError {
-    #[error(
-        "ScenarioRunError:\n  scenario_id: {scenario_id}\n  step_index: {step_index}\n  step: {step_kind}\n  reason: simulation command failed ({source})"
-    )]
-    SimCommandFailed {
-        scenario_id: Box<str>,
-        step_index: usize,
-        step_kind: Box<str>,
-        source: flux_sim::SimError,
-    },
-
-    #[error(
-        "ScenarioRunError:\n  scenario_id: {scenario_id}\n  step_index: {step_index}\n  step: AssertTick\n  expected_tick: {expected}\n  actual_tick: {actual}\n  reason: tick assertion failed"
-    )]
-    AssertTickFailed {
-        scenario_id: Box<str>,
-        step_index: usize,
-        expected: u64,
-        actual: u64,
-    },
-}

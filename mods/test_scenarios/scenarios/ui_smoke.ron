@@ -1,0 +1,21 @@
+Scenario(
+    id: "test_scenarios:scenario/ui_smoke",
+    steps: [
+        Log("ui smoke started"),
+        Click("base:widget/main_menu/run_world"),
+        WaitSimulationTime(delay_ms: 32),
+        SetCameraPivot(x: 12, y: 8),
+        SetCameraZoom(1.25),
+        PauseSimulation(delay_ms: 150),
+        WaitTicks(2),
+        AssertTick(4),
+        TakeScreenshot("ui_smoke_world.png"),
+        OpenMenu("base:menu/main"),
+        Click("base:widget/main_menu/settings"),
+        AssertUiExists("base:widget/settings_menu/back"),
+        TakeScreenshot("ui_smoke_settings.png"),
+        Click("base:widget/settings_menu/back"),
+        AssertUiExists("base:widget/main_menu/settings"),
+        Log("ui smoke finished"),
+    ],
+)

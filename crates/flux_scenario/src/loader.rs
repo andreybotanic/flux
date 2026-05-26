@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::{LoadedScenario, ScenarioDefinition, ScenarioLoadError, ScenarioSource, ScenarioStep};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ScenarioLoadReport {
     pub scenarios: Vec<LoadedScenario>,
     pub errors: Vec<ScenarioLoadError>,
@@ -223,7 +223,15 @@ mod tests {
                 r#"
 Scenario(
     id: "test_scenarios:scenario/bootstrap_smoke",
-    steps: [Log("started"), CreateWorld(width: 64, height: 64, seed: 0), WaitTicks(5), AssertTick(5)],
+    steps: [
+        Log("started"),
+        CreateWorld(width: 64, height: 64, seed: 0),
+        OpenMenu("test_scenarios:menu/debug"),
+        OpenUi("test_scenarios:menu/legacy"),
+        SetCameraZoom(1.25),
+        WaitTicks(5),
+        AssertTick(5),
+    ],
 )
 "#,
             )],
