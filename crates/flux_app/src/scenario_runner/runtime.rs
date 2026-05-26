@@ -320,10 +320,11 @@ fn drive_scenario_runtime(
                 format!("step_index={step_index} step={step_kind} status=ok"),
             );
             runtime_state.current_step += 1;
-            if runtime_state.visual_delay_ms > 0 {
-                runtime_state.waiting_until =
-                    Some(now + Duration::from_millis(runtime_state.visual_delay_ms));
-            }
+            runtime_state.waiting_until = append_visual_delay_after_step(
+                runtime_state.waiting_until,
+                now,
+                runtime_state.visual_delay_ms,
+            );
         }
         Err(reason) => {
             push_diag(
@@ -688,6 +689,20 @@ fn apply_ui_action(
             Ok(())
         }
     }
+}
+
+pub(super) fn append_visual_delay_after_step(
+    waiting_until: Option<Duration>,
+    now: Duration,
+    visual_delay_ms: u64,
+) -> Option<Duration> {
+    if visual_delay_ms == 0 {
+        return waiting_until;
+    }
+
+    let visual_delay = Duration::from_millis(visual_delay_ms);
+    let base = waiting_until.filter(|until| *until > now).unwrap_or(now);
+    Some(base.saturating_add(visual_delay))
 }
 
 pub(super) fn find_widget<'a>(

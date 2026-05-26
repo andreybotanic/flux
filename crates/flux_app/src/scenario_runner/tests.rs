@@ -7,6 +7,7 @@ use flux_ui::{
     UiMenuDefinition, UiMenuId, UiRegistry, UiWidgetId, WidgetKind, WidgetNode,
 };
 
+use super::runtime::append_visual_delay_after_step;
 use super::validation::{
     ScenarioValidationError, ScenarioValidationState, simulation_ticks_for_delay,
     validate_scenario_steps,
@@ -392,4 +393,25 @@ fn simulation_time_uses_floor_tick_conversion() {
     assert_eq!(simulation_ticks_for_delay(&runtime, 1000), 62);
     assert_eq!(simulation_ticks_for_delay(&runtime, 15), 0);
     assert_eq!(simulation_ticks_for_delay(&runtime, 16), 1);
+}
+
+#[test]
+fn visual_delay_sets_wait_when_step_did_not_set_wait() {
+    let now = Duration::from_millis(100);
+    let actual = append_visual_delay_after_step(None, now, 50);
+    assert_eq!(actual, Some(Duration::from_millis(150)));
+}
+
+#[test]
+fn visual_delay_is_added_on_top_of_existing_step_wait() {
+    let now = Duration::from_millis(100);
+    let actual = append_visual_delay_after_step(Some(Duration::from_millis(300)), now, 50);
+    assert_eq!(actual, Some(Duration::from_millis(350)));
+}
+
+#[test]
+fn visual_delay_uses_now_when_existing_wait_is_already_elapsed() {
+    let now = Duration::from_millis(100);
+    let actual = append_visual_delay_after_step(Some(Duration::from_millis(80)), now, 50);
+    assert_eq!(actual, Some(Duration::from_millis(150)));
 }
