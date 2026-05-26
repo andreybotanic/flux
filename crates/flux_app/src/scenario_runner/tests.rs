@@ -7,7 +7,7 @@ use flux_ui::{
     UiMenuDefinition, UiMenuId, UiRegistry, UiWidgetId, WidgetKind, WidgetNode,
 };
 
-use super::runtime::append_visual_delay_after_step;
+use super::runtime::{append_visual_delay_after_step, append_visual_delay_after_step_if_needed};
 use super::validation::{
     ScenarioValidationError, ScenarioValidationState, simulation_ticks_for_delay,
     validate_scenario_steps,
@@ -414,4 +414,19 @@ fn visual_delay_uses_now_when_existing_wait_is_already_elapsed() {
     let now = Duration::from_millis(100);
     let actual = append_visual_delay_after_step(Some(Duration::from_millis(80)), now, 50);
     assert_eq!(actual, Some(Duration::from_millis(150)));
+}
+
+#[test]
+fn visual_delay_is_not_added_when_step_is_last() {
+    let now = Duration::from_millis(100);
+    let actual = append_visual_delay_after_step_if_needed(None, now, 50, false);
+    assert_eq!(actual, None);
+}
+
+#[test]
+fn visual_delay_is_added_when_more_steps_exist() {
+    let now = Duration::from_millis(100);
+    let actual =
+        append_visual_delay_after_step_if_needed(Some(Duration::from_millis(300)), now, 50, true);
+    assert_eq!(actual, Some(Duration::from_millis(350)));
 }

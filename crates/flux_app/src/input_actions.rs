@@ -57,9 +57,17 @@ struct OpenMenuAction<'a> {
 
 impl ExecutableInputAction for OpenMenuAction<'_> {
     fn execute(&self, context: &mut ActionExecutionContext<'_>) -> ActionExecutionFlow {
+        if *context.screen_mode == FluxScreenMode::World {
+            context.ui_state.needs_rebuild = true;
+            *context.screen_mode = FluxScreenMode::Menu;
+            context.sim_state.simulation_paused = true;
+            return ActionExecutionFlow::Continue;
+        }
+
         if context.ui_state.dispatcher.menu_stack().current() == self.menu_id {
             return ActionExecutionFlow::Continue;
         }
+
         if let Err(error) = context
             .ui_state
             .dispatcher

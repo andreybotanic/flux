@@ -1,14 +1,15 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use bevy::app::AppExit;
-use bevy::log::{error, info};
+use bevy::log::tracing_subscriber::Layer;
+use bevy::log::{BoxedLayer, info};
 use bevy::prelude::{
-    App, Commands, IntoScheduleConfigs, MessageWriter, PluginGroup, Query, Res, ResMut, Resource,
-    With,
+    App, Commands, IntoScheduleConfigs, MessageWriter, PluginGroup, Res, ResMut, Resource,
 };
-use bevy::render::view::screenshot::{Capturing, Screenshot, save_to_disk};
+use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::window::WindowPlugin;
 use bevy::{
     asset::AssetPlugin, log::LogPlugin, prelude::Update, render::RenderPlugin, window::Window,
@@ -44,6 +45,11 @@ struct ScenarioBootstrapConfig {
     config: ScenarioRunConfig,
 }
 
+#[derive(Resource, Debug, Clone)]
+struct ScenarioLogLayerConfig {
+    diagnostic_log_path: PathBuf,
+}
+
 #[derive(Resource)]
 struct ScenarioRuntimeState {
     scenario: ScenarioDefinition,
@@ -57,21 +63,39 @@ struct ScenarioRuntimeState {
     resume_after_wait: bool,
     pending_exit: Option<AppExit>,
     artifact_dir: PathBuf,
-    diagnostic_lines: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ScreenshotCaptureWait {
-    observed_capturing: bool,
+    output_path: PathBuf,
+    deadline: Duration,
 }
+
+const SCREENSHOT_WRITE_TIMEOUT_MS: u64 = 30_000;
 
 pub(crate) fn run_scenario_windowed(scenario: &LoadedScenario, config: ScenarioRunConfig) -> i32 {
-    let asset_root = std::env::current_dir()
-        .unwrap_or_else(|error| panic!("scenario startup failed: cannot resolve cwd: {error}"))
-        .to_string_lossy()
-        .into_owned();
+    let cwd = std::env::current_dir()
+        .unwrap_or_else(|error| panic!("scenario startup failed: cannot resolve cwd: {error}"));
+    let asset_root = cwd.to_string_lossy().into_owned();
+    let artifact_dir = cwd.join(scenario_artifact_dir(&scenario.definition.id));
+    if let Err(error) = fs::create_dir_all(&artifact_dir) {
+        panic!(
+            "scenario startup failed: cannot create artifact directory `{}`: {error}",
+            artifact_dir.display()
+        );
+    }
+    let diagnostic_log_path = artifact_dir.join("diagnostic.log");
+    if let Err(error) = fs::write(&diagnostic_log_path, "") {
+        panic!(
+            "scenario startup failed: cannot initialize diagnostic log `{}`: {error}",
+            diagnostic_log_path.display()
+        );
+    }
 
     let mut app = App::new();
+    app.insert_resource(ScenarioLogLayerConfig {
+        diagnostic_log_path,
+    });
     app.add_message::<crate::UiButtonPressed>();
     app.add_plugins(
         bevy::prelude::DefaultPlugins
@@ -81,6 +105,7 @@ pub(crate) fn run_scenario_windowed(scenario: &LoadedScenario, config: ScenarioR
             })
             .set(LogPlugin {
                 filter: "info,wgpu=warn,naga=warn".to_owned(),
+                custom_layer: scenario_diagnostic_log_layer,
                 ..Default::default()
             })
             .set(RenderPlugin::default())
@@ -133,7 +158,9 @@ fn setup_scenario_runtime_state(
     };
 
     let scenario_id = bootstrap.scenario.definition.id.clone();
-    let artifact_dir = scenario_artifact_dir(&scenario_id);
+    let artifact_dir = std::env::current_dir()
+        .unwrap_or_else(|error| panic!("scenario startup failed: cannot resolve cwd: {error}"))
+        .join(scenario_artifact_dir(&scenario_id));
     if let Err(error) = fs::create_dir_all(&artifact_dir) {
         panic!(
             "scenario startup failed: cannot create artifact directory `{}`: {error}",
@@ -153,9 +180,7 @@ fn setup_scenario_runtime_state(
         resume_after_wait: false,
         pending_exit: None,
         artifact_dir,
-        diagnostic_lines: Vec::new(),
     };
-
     let initial_menu = ui_state.dispatcher.menu_stack().current().clone();
     let mut validation_state = ScenarioValidationState {
         world_loaded: false,
@@ -179,13 +204,7 @@ fn setup_scenario_runtime_state(
         );
         state.pending_exit = Some(AppExit::error());
     } else {
-        push_diag(
-            &mut state,
-            format!(
-                "scenario {} validation passed",
-                bootstrap.scenario.definition.id
-            ),
-        );
+        push_diag(&mut state, "scenario validation passed".to_owned());
     }
 
     commands.insert_resource(state);
@@ -196,7 +215,6 @@ fn drive_scenario_runtime(
     mut commands: Commands,
     time_real: Res<bevy::prelude::Time<bevy::time::Real>>,
     mut app_exit: MessageWriter<AppExit>,
-    capturing: Query<(), With<Capturing>>,
     runtime_state: Option<ResMut<ScenarioRuntimeState>>,
     ui_state: Option<ResMut<FluxUiState>>,
     screen_mode: Option<ResMut<FluxScreenMode>>,
@@ -209,7 +227,6 @@ fn drive_scenario_runtime(
     };
 
     if let Some(exit) = runtime_state.pending_exit.clone() {
-        flush_diagnostic_artifact(&runtime_state);
         app_exit.write(exit);
         return;
     }
@@ -227,18 +244,25 @@ fn drive_scenario_runtime(
         }
     }
 
-    if let Some(waiting_capture) = runtime_state.waiting_capture.as_mut() {
-        let capture_count = capturing.iter().count();
-        if !waiting_capture.observed_capturing {
-            if capture_count > 0 {
-                waiting_capture.observed_capturing = true;
-            }
+    if let Some(waiting_capture) = runtime_state.waiting_capture.as_ref() {
+        let output_path = waiting_capture.output_path.clone();
+        let deadline = waiting_capture.deadline;
+        if output_path.is_file() {
+            push_diag(
+                &mut runtime_state,
+                format!("screenshot written: {}", output_path.display()),
+            );
+            runtime_state.waiting_capture = None;
+        } else if now < deadline {
+            return;
+        } else {
+            let reason = format!(
+                "scenario runtime failed: screenshot was not written in time: {}",
+                output_path.display()
+            );
+            push_runtime_failure(&mut runtime_state, &mut app_exit, &reason);
             return;
         }
-        if capture_count > 0 {
-            return;
-        }
-        runtime_state.waiting_capture = None;
     }
 
     if runtime_state.current_step >= runtime_state.scenario.steps.len() {
@@ -247,12 +271,10 @@ fn drive_scenario_runtime(
             .map(|state| state.runtime.tick_counter())
             .unwrap_or_default();
         let finished_line = format!(
-            "scenario {} finished steps={} final_tick={final_tick}",
-            runtime_state.scenario.id,
+            "scenario finished: steps={} final_tick={final_tick}",
             runtime_state.scenario.steps.len(),
         );
         push_diag(&mut runtime_state, finished_line);
-        flush_diagnostic_artifact(&runtime_state);
         app_exit.write(AppExit::Success);
         runtime_state.pending_exit = Some(AppExit::Success);
         return;
@@ -320,10 +342,12 @@ fn drive_scenario_runtime(
                 format!("step_index={step_index} step={step_kind} status=ok"),
             );
             runtime_state.current_step += 1;
-            runtime_state.waiting_until = append_visual_delay_after_step(
+            let has_more_steps = runtime_state.current_step < runtime_state.scenario.steps.len();
+            runtime_state.waiting_until = append_visual_delay_after_step_if_needed(
                 runtime_state.waiting_until,
                 now,
                 runtime_state.visual_delay_ms,
+                has_more_steps,
             );
         }
         Err(reason) => {
@@ -331,7 +355,6 @@ fn drive_scenario_runtime(
                 &mut runtime_state,
                 format!("step_index={step_index} step={step_kind} status=failed reason={reason}"),
             );
-            flush_diagnostic_artifact(&runtime_state);
             app_exit.write(AppExit::error());
             runtime_state.pending_exit = Some(AppExit::error());
         }
@@ -352,7 +375,7 @@ fn execute_step(
 ) -> Result<(), String> {
     match step {
         ScenarioStep::LogStep(step) => {
-            push_diag(runtime_state, format!("log: {}", step.0));
+            push_diag(runtime_state, step.0.clone());
             Ok(())
         }
         ScenarioStep::CreateWorldStep(step) => create_world(
@@ -382,7 +405,9 @@ fn execute_step(
         ScenarioStep::ResumeSimulationStep(_) => {
             resume_simulation(runtime_state, screen_mode, ui_state)
         }
-        ScenarioStep::TakeScreenshotStep(step) => take_screenshot(commands, runtime_state, step),
+        ScenarioStep::TakeScreenshotStep(step) => {
+            take_screenshot(commands, runtime_state, step, now)
+        }
         ScenarioStep::AssertUiExistsStep(step) => assert_ui_exists(runtime_state, step, ui_state),
         ScenarioStep::SetCameraPivotStep(step) => {
             world_render_state.request_camera_pivot(step.x, step.y);
@@ -580,14 +605,26 @@ fn take_screenshot(
     commands: &mut Commands,
     runtime_state: &mut ScenarioRuntimeState,
     step: &TakeScreenshotStep,
+    now: Duration,
 ) -> Result<(), String> {
     let filename = &step.0;
     let path = runtime_state.artifact_dir.join(filename);
+    match fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "cannot remove existing screenshot `{}` before capture: {error}",
+                path.display()
+            ));
+        }
+    }
     commands
         .spawn(Screenshot::primary_window())
-        .observe(save_to_disk(path));
+        .observe(save_to_disk(path.clone()));
     runtime_state.waiting_capture = Some(ScreenshotCaptureWait {
-        observed_capturing: false,
+        output_path: path,
+        deadline: now.saturating_add(Duration::from_millis(SCREENSHOT_WRITE_TIMEOUT_MS)),
     });
     Ok(())
 }
@@ -705,6 +742,19 @@ pub(super) fn append_visual_delay_after_step(
     Some(base.saturating_add(visual_delay))
 }
 
+pub(super) fn append_visual_delay_after_step_if_needed(
+    waiting_until: Option<Duration>,
+    now: Duration,
+    visual_delay_ms: u64,
+    has_more_steps: bool,
+) -> Option<Duration> {
+    if !has_more_steps {
+        return waiting_until;
+    }
+
+    append_visual_delay_after_step(waiting_until, now, visual_delay_ms)
+}
+
 pub(super) fn find_widget<'a>(
     menu: &'a UiMenuDefinition,
     id: &UiWidgetId,
@@ -724,25 +774,8 @@ fn find_widget_in_tree<'a>(node: &'a WidgetNode, id: &UiWidgetId) -> Option<&'a 
     None
 }
 
-fn push_diag(state: &mut ScenarioRuntimeState, line: String) {
-    state.diagnostic_lines.push(line);
-}
-
-fn flush_diagnostic_artifact(state: &ScenarioRuntimeState) {
-    let path = state.artifact_dir.join("diagnostic.log");
-    let mut body = String::new();
-    for line in &state.diagnostic_lines {
-        body.push_str(line);
-        body.push('\n');
-    }
-    if let Err(error) = fs::write(&path, body) {
-        error!(
-            "failed to write diagnostic log for scenario {} to {}: {}",
-            state.scenario.id,
-            path.display(),
-            error
-        );
-    }
+fn push_diag(_state: &mut ScenarioRuntimeState, line: String) {
+    info!("{line}");
 }
 
 fn push_runtime_failure(
@@ -751,7 +784,24 @@ fn push_runtime_failure(
     reason: &str,
 ) {
     push_diag(state, reason.to_owned());
-    flush_diagnostic_artifact(state);
     app_exit.write(AppExit::error());
     state.pending_exit = Some(AppExit::error());
+}
+
+fn scenario_diagnostic_log_layer(app: &mut App) -> Option<BoxedLayer> {
+    let config = app.world().get_resource::<ScenarioLogLayerConfig>()?;
+    let file = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&config.diagnostic_log_path)
+        .ok()?;
+    let filter = bevy::log::tracing_subscriber::filter::FilterFn::new(|meta| {
+        meta.target()
+            .starts_with("flux_app::scenario_runner::runtime")
+    });
+    let layer = bevy::log::tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(Mutex::new(file))
+        .with_filter(filter);
+    Some(Box::new(layer))
 }
