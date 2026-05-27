@@ -106,6 +106,22 @@ fn validate_step(
             state.sim_paused = false;
             Ok(())
         }
+        ScenarioStep::SaveGameStep(_) => {
+            if !state.world_loaded {
+                return Err(validation_error(
+                    step_index,
+                    step,
+                    "SaveGame requires loaded world",
+                ));
+            }
+            Ok(())
+        }
+        ScenarioStep::LoadGameStep(_) => {
+            state.world_loaded = true;
+            state.world_open = true;
+            state.sim_paused = false;
+            Ok(())
+        }
         ScenarioStep::SetCameraPivotStep(_) | ScenarioStep::SetCameraZoomStep(_) => {
             if !state.world_open {
                 return Err(validation_error(
@@ -274,6 +290,21 @@ fn apply_click_action_for_validation(
         }
         BindingAction::DiagnosticLog(_) => {}
         BindingAction::RunWorld => {
+            state.dispatcher.reset_menu_stack_to_root();
+            state.world_loaded = true;
+            state.world_open = true;
+            state.sim_paused = false;
+        }
+        BindingAction::SaveGame(_) => {
+            if !state.world_loaded {
+                return Err(validation_error_kind(
+                    step_index,
+                    "Click",
+                    "SaveGame requires loaded world",
+                ));
+            }
+        }
+        BindingAction::LoadGame(_) => {
             state.dispatcher.reset_menu_stack_to_root();
             state.world_loaded = true;
             state.world_open = true;

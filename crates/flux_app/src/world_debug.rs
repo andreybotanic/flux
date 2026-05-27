@@ -7,11 +7,15 @@ use flux_world::{ParticleCount, StructurePlacementError, TilePos, WorldGrid, Wor
 // S11B temporary debug-only world seeding/snapshot module.
 // This module is expected to be replaced once the production world visualization pipeline appears.
 
+#[allow(dead_code)]
 const TEMP_GAS_PARTICLES_LOW: u64 = 35;
+#[allow(dead_code)]
 const TEMP_GAS_PARTICLES_MEDIUM: u64 = 180;
+#[allow(dead_code)]
 const TEMP_GAS_PARTICLES_HIGH: u64 = 640;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum WorldDebugPopulateError {
     MissingSolidPrototype,
     MissingGasPrototype,
@@ -95,6 +99,7 @@ impl std::fmt::Display for WorldRenderSnapshotError {
 
 impl std::error::Error for WorldRenderSnapshotError {}
 
+#[allow(dead_code)]
 pub(crate) fn populate_world_debug_mvp(
     world: &mut WorldGrid,
     registry: &ContentRegistry,

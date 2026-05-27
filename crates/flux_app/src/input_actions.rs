@@ -1,6 +1,7 @@
 use bevy::log::{error, info};
 use bevy::prelude::Resource;
 use flux_render::WorldRenderState;
+use flux_save::{load_game, save_game};
 use flux_sim::SimCommand;
 use flux_ui::{BindingAction, UiMenuId};
 
@@ -46,6 +47,8 @@ impl ExecutableInputAction for BindingAction {
             BindingAction::DiagnosticLog(message) => {
                 DiagnosticLogAction { message }.execute(context)
             }
+            BindingAction::SaveGame(save_id) => SaveGameAction { save_id }.execute(context),
+            BindingAction::LoadGame(save_id) => LoadGameAction { save_id }.execute(context),
             BindingAction::ToggleSimulation => ToggleSimulationAction.execute(context),
         }
     }
@@ -140,14 +143,6 @@ impl ExecutableInputAction for RunWorldAction {
             return ActionExecutionFlow::Continue;
         };
 
-        if let Err(error) =
-            world_debug::populate_world_debug_mvp(world, &context.world_debug_content.registry)
-        {
-            error!(
-                "RunWorld temporary S11B world population failed (continuing with partial world): {error}"
-            );
-        }
-
         let snapshot = match world_debug::build_world_render_snapshot(
             world,
             &context.world_debug_content.registry,
@@ -175,6 +170,101 @@ impl ExecutableInputAction for RunWorldAction {
             world_size.width,
             world_size.height,
             context.sim_state.runtime.world_seed().unwrap_or_default()
+        );
+        ActionExecutionFlow::Continue
+    }
+}
+
+struct SaveGameAction<'a> {
+    save_id: &'a str,
+}
+
+impl ExecutableInputAction for SaveGameAction<'_> {
+    fn execute(&self, context: &mut ActionExecutionContext<'_>) -> ActionExecutionFlow {
+        if !context.sim_state.world_loaded {
+            info!("SaveGame ignored: world is not loaded");
+            return ActionExecutionFlow::Continue;
+        }
+
+        let Some(world) = context.sim_state.runtime.world() else {
+            error!("SaveGame failed: world is missing while world_loaded=true");
+            return ActionExecutionFlow::Continue;
+        };
+        let seed = context.sim_state.runtime.world_seed().unwrap_or_default();
+        let tick = context.sim_state.runtime.tick_counter();
+        if let Err(error) = save_game(
+            std::path::Path::new("saves"),
+            self.save_id,
+            world,
+            seed,
+            tick,
+        ) {
+            error!("SaveGame failed for id `{}`: {error}", self.save_id);
+            return ActionExecutionFlow::Continue;
+        }
+        info!(
+            "game saved: id={} size={}x{} seed={} tick={}",
+            self.save_id,
+            world.size().width,
+            world.size().height,
+            seed,
+            tick
+        );
+        ActionExecutionFlow::Continue
+    }
+}
+
+struct LoadGameAction<'a> {
+    save_id: &'a str,
+}
+
+impl ExecutableInputAction for LoadGameAction<'_> {
+    fn execute(&self, context: &mut ActionExecutionContext<'_>) -> ActionExecutionFlow {
+        let loaded = match load_game(
+            std::path::Path::new("saves"),
+            self.save_id,
+            &context.world_debug_content.registry,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                error!("LoadGame failed for id `{}`: {error}", self.save_id);
+                return ActionExecutionFlow::Continue;
+            }
+        };
+        context
+            .sim_state
+            .runtime
+            .load_world_state(loaded.world, loaded.seed, loaded.tick);
+        let Some(world) = context.sim_state.runtime.world() else {
+            error!("LoadGame failed: world is missing after load");
+            return ActionExecutionFlow::Continue;
+        };
+        let snapshot = match world_debug::build_world_render_snapshot(
+            world,
+            &context.world_debug_content.registry,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                error!("LoadGame failed while building render snapshot: {error}");
+                return ActionExecutionFlow::Stop;
+            }
+        };
+
+        context
+            .world_render_state
+            .show_world(world.size(), 1.0, snapshot);
+        context.ui_state.dispatcher.reset_menu_stack_to_root();
+        *context.screen_mode = FluxScreenMode::World;
+        context.ui_state.needs_rebuild = false;
+        context.sim_state.world_loaded = true;
+        context.sim_state.simulation_paused = false;
+        info!(
+            "game loaded: id={} size={}x{} seed={} tick={}",
+            self.save_id,
+            world.size().width,
+            world.size().height,
+            loaded.seed,
+            loaded.tick
         );
         ActionExecutionFlow::Continue
     }

@@ -79,6 +79,13 @@ impl SimRuntime {
         Ok(())
     }
 
+    pub fn load_world_state(&mut self, world: WorldGrid, seed: u64, tick: u64) {
+        self.world = Some(world);
+        self.world_seed = Some(seed);
+        self.tick_counter = tick;
+        self.initialized = true;
+    }
+
     fn process_queued_commands(&mut self) -> Result<(), SimError> {
         while let Some(command) = self.commands.dequeue() {
             self.process_command(command)?;
@@ -149,6 +156,8 @@ impl SimRuntime {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    use flux_world::{GridSize, WorldGrid};
 
     use crate::{SimCommand, SimError, SimEvent, SimRuntime};
 
@@ -281,5 +290,18 @@ mod tests {
             .initialize()
             .expect("newly queued command should be processed");
         assert_eq!(runtime.tick_counter(), 1);
+    }
+
+    #[test]
+    fn load_world_state_replaces_world_seed_and_tick() {
+        let mut runtime = runtime();
+        let world = WorldGrid::new(GridSize::new(4, 5)).expect("world");
+
+        runtime.load_world_state(world, 999, 321);
+
+        assert_eq!(runtime.world_seed(), Some(999));
+        assert_eq!(runtime.tick_counter(), 321);
+        assert_eq!(runtime.world().expect("world").size(), GridSize::new(4, 5));
+        assert!(runtime.is_initialized());
     }
 }

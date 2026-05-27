@@ -39,6 +39,16 @@ fn deserializes_builtin_actions_from_ron() {
         .from_str::<BindingAction>("RunWorld")
         .expect("button run world action should parse");
     assert_eq!(run_world, BindingAction::RunWorld);
+
+    let save = options
+        .from_str::<BindingAction>("SaveGame(\"slot_a\")")
+        .expect("button save action should parse");
+    assert_eq!(save, BindingAction::SaveGame("slot_a".to_owned()));
+
+    let load = options
+        .from_str::<BindingAction>("LoadGame(\"slot_b\")")
+        .expect("button load action should parse");
+    assert_eq!(load, BindingAction::LoadGame("slot_b".to_owned()));
 }
 
 #[test]

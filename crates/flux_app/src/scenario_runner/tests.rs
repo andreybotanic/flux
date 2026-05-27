@@ -15,8 +15,9 @@ use super::validation::{
     validate_scenario_steps,
 };
 use flux_scenario::{
-    AssertUiExistsStep, ClickStep, OpenMenuStep, PauseSimulationStep, ScenarioDefinition,
-    ScenarioStep, TakeScreenshotStep, WaitRealtimeStep, WaitSimulationTimeStep, WaitTicksStep,
+    AssertUiExistsStep, ClickStep, LoadGameStep, OpenMenuStep, PauseSimulationStep, SaveGameStep,
+    ScenarioDefinition, ScenarioStep, TakeScreenshotStep, WaitRealtimeStep, WaitSimulationTimeStep,
+    WaitTicksStep,
 };
 use flux_ui::TextWidget;
 
@@ -53,6 +54,22 @@ fn build_registry() -> UiRegistry {
                 kind: WidgetKind::Button(flux_ui::ButtonWidget {
                     text: localization("$base.menu.main.settings"),
                     action: BindingAction::OpenMenu(menu_id("base:menu/settings")),
+                }),
+                children: Vec::new(),
+            },
+            WidgetNode {
+                id: widget_id("base:widget/main/save_slot_a"),
+                kind: WidgetKind::Button(flux_ui::ButtonWidget {
+                    text: localization("$base.menu.main.save_slot_a"),
+                    action: BindingAction::SaveGame("slot_a".to_owned()),
+                }),
+                children: Vec::new(),
+            },
+            WidgetNode {
+                id: widget_id("base:widget/main/load_slot_a"),
+                kind: WidgetKind::Button(flux_ui::ButtonWidget {
+                    text: localization("$base.menu.main.load_slot_a"),
+                    action: BindingAction::LoadGame("slot_a".to_owned()),
                 }),
                 children: Vec::new(),
             },
@@ -178,11 +195,33 @@ fn rejects_pause_without_loaded_world() {
 }
 
 #[test]
+fn rejects_save_game_without_loaded_world() {
+    let error = validate_single_step(ScenarioStep::SaveGameStep(SaveGameStep(
+        "slot_a".to_owned(),
+    )));
+    assert_eq!(error.step_kind, "SaveGame");
+}
+
+#[test]
 fn rejects_open_ui_with_unknown_menu() {
     let error = validate_single_step(ScenarioStep::OpenMenuStep(OpenMenuStep(menu_id(
         "base:menu/unknown",
     ))));
     assert_eq!(error.step_kind, "OpenMenu");
+}
+
+#[test]
+fn load_game_step_enables_simulation_wait_steps() {
+    let registry = build_registry();
+    let mut state = validation_state(&registry);
+    let scenario = ScenarioDefinition {
+        id: PrototypeId::parse("test_scenarios:scenario/load_then_wait").expect("id"),
+        steps: vec![
+            ScenarioStep::LoadGameStep(LoadGameStep("slot_a".to_owned())),
+            ScenarioStep::WaitTicksStep(WaitTicksStep(1)),
+        ],
+    };
+    validate_scenario_steps(&scenario, &registry, &mut state).expect("scenario must validate");
 }
 
 #[test]

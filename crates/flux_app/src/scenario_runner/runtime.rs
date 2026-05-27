@@ -4,21 +4,20 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use bevy::app::AppExit;
-use bevy::log::tracing_subscriber::Layer;
-use bevy::log::{BoxedLayer, info};
+use bevy::log::tracing_subscriber::prelude::*;
+use bevy::log::{LogPlugin, info};
 use bevy::prelude::{
     App, Commands, IntoScheduleConfigs, MessageWriter, PluginGroup, Res, ResMut, Resource,
 };
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::window::WindowPlugin;
-use bevy::{
-    asset::AssetPlugin, log::LogPlugin, prelude::Update, render::RenderPlugin, window::Window,
-};
+use bevy::{asset::AssetPlugin, prelude::Update, render::RenderPlugin, window::Window};
 use flux_render::{FluxRenderPlugin, WorldRenderState};
+use flux_save::{load_game, save_game};
 use flux_scenario::{
-    AssertUiExistsStep, ClickStep, CreateWorldStep, LoadedScenario, OpenMenuStep,
-    PauseSimulationStep, ScenarioDefinition, ScenarioStep, TakeScreenshotStep, WaitRealtimeStep,
-    WaitSimulationTimeStep, WaitTicksStep,
+    AssertUiExistsStep, ClickStep, CreateWorldStep, LoadGameStep, LoadedScenario, OpenMenuStep,
+    PauseSimulationStep, SaveGameStep, ScenarioDefinition, ScenarioStep, TakeScreenshotStep,
+    WaitRealtimeStep, WaitSimulationTimeStep, WaitTicksStep,
 };
 use flux_sim::SimCommand;
 use flux_ui::{
@@ -43,11 +42,6 @@ pub(crate) struct ScenarioRunConfig {
 struct ScenarioBootstrapConfig {
     scenario: LoadedScenario,
     config: ScenarioRunConfig,
-}
-
-#[derive(Resource, Debug, Clone)]
-struct ScenarioLogLayerConfig {
-    diagnostic_log_path: PathBuf,
 }
 
 #[derive(Resource)]
@@ -91,21 +85,16 @@ pub(crate) fn run_scenario_windowed(scenario: &LoadedScenario, config: ScenarioR
             diagnostic_log_path.display()
         );
     }
+    initialize_scenario_logger(&diagnostic_log_path);
 
     let mut app = App::new();
-    app.insert_resource(ScenarioLogLayerConfig {
-        diagnostic_log_path,
-    });
     app.add_message::<crate::UiButtonPressed>();
     app.add_plugins(
         bevy::prelude::DefaultPlugins
+            .build()
+            .disable::<LogPlugin>()
             .set(AssetPlugin {
                 file_path: asset_root,
-                ..Default::default()
-            })
-            .set(LogPlugin {
-                filter: "info,wgpu=warn,naga=warn".to_owned(),
-                custom_layer: scenario_diagnostic_log_layer,
                 ..Default::default()
             })
             .set(RenderPlugin::default())
@@ -405,6 +394,16 @@ fn execute_step(
         ScenarioStep::ResumeSimulationStep(_) => {
             resume_simulation(runtime_state, screen_mode, ui_state)
         }
+        ScenarioStep::SaveGameStep(step) => save_game_step(runtime_state, step, sim_state),
+        ScenarioStep::LoadGameStep(step) => load_game_step(
+            runtime_state,
+            step,
+            sim_state,
+            world_debug_content,
+            world_render_state,
+            screen_mode,
+            ui_state,
+        ),
         ScenarioStep::TakeScreenshotStep(step) => {
             take_screenshot(commands, runtime_state, step, now)
         }
@@ -444,10 +443,60 @@ fn create_world(
     let Some(world) = sim_state.runtime.world_mut() else {
         return Err("world is missing after CreateWorld".to_owned());
     };
-    world_debug::populate_world_debug_mvp(world, &world_debug_content.registry)
-        .map_err(|error| format!("world population failed: {error}"))?;
     let snapshot = world_debug::build_world_render_snapshot(world, &world_debug_content.registry)
         .map_err(|error| format!("world render snapshot failed: {error}"))?;
+    world_render_state.show_world(world.size(), 1.0, snapshot);
+    ui_state.dispatcher.reset_menu_stack_to_root();
+    *screen_mode = FluxScreenMode::World;
+    ui_state.needs_rebuild = false;
+    runtime_state.world_loaded = true;
+    runtime_state.world_open = true;
+    runtime_state.sim_paused = false;
+    Ok(())
+}
+
+fn save_game_step(
+    runtime_state: &ScenarioRuntimeState,
+    step: &SaveGameStep,
+    sim_state: &FluxSimState,
+) -> Result<(), String> {
+    if !runtime_state.world_loaded {
+        return Err("SaveGame requires loaded world".to_owned());
+    }
+    let Some(world) = sim_state.runtime.world() else {
+        return Err("SaveGame failed: world is missing while world_loaded=true".to_owned());
+    };
+    let seed = sim_state.runtime.world_seed().unwrap_or_default();
+    let tick = sim_state.runtime.tick_counter();
+    save_game(std::path::Path::new("saves"), &step.0, world, seed, tick)
+        .map_err(|error| format!("SaveGame failed for `{}`: {error}", step.0))?;
+    Ok(())
+}
+
+fn load_game_step(
+    runtime_state: &mut ScenarioRuntimeState,
+    step: &LoadGameStep,
+    sim_state: &mut FluxSimState,
+    world_debug_content: &FluxWorldDebugContent,
+    world_render_state: &mut WorldRenderState,
+    screen_mode: &mut FluxScreenMode,
+    ui_state: &mut FluxUiState,
+) -> Result<(), String> {
+    let loaded = load_game(
+        std::path::Path::new("saves"),
+        &step.0,
+        &world_debug_content.registry,
+    )
+    .map_err(|error| format!("LoadGame failed for `{}`: {error}", step.0))?;
+    sim_state
+        .runtime
+        .load_world_state(loaded.world, loaded.seed, loaded.tick);
+    let Some(world) = sim_state.runtime.world() else {
+        return Err("LoadGame failed: world is missing after load".to_owned());
+    };
+    let snapshot =
+        world_debug::build_world_render_snapshot(world, &world_debug_content.registry)
+            .map_err(|error| format!("world render snapshot failed after LoadGame: {error}"))?;
     world_render_state.show_world(world.size(), 1.0, snapshot);
     ui_state.dispatcher.reset_menu_stack_to_root();
     *screen_mode = FluxScreenMode::World;
@@ -728,6 +777,32 @@ fn apply_ui_action(
                 ui_state,
             )
         }
+        BindingAction::SaveGame(save_id) => {
+            let Some(sim_state) = sim_state else {
+                return Err("SaveGame requires simulation runtime context".to_owned());
+            };
+            save_game_step(runtime_state, &SaveGameStep(save_id.clone()), sim_state)
+        }
+        BindingAction::LoadGame(save_id) => {
+            let Some(sim_state) = sim_state else {
+                return Err("LoadGame requires simulation runtime context".to_owned());
+            };
+            let Some(world_debug_content) = world_debug_content else {
+                return Err("LoadGame requires world debug content".to_owned());
+            };
+            let Some(world_render_state) = world_render_state else {
+                return Err("LoadGame requires world render state".to_owned());
+            };
+            load_game_step(
+                runtime_state,
+                &LoadGameStep(save_id.clone()),
+                sim_state,
+                world_debug_content,
+                world_render_state,
+                screen_mode,
+                ui_state,
+            )
+        }
         BindingAction::ToggleSimulation => {
             if runtime_state.world_loaded {
                 runtime_state.sim_paused = !runtime_state.sim_paused;
@@ -784,7 +859,7 @@ fn find_widget_in_tree<'a>(node: &'a WidgetNode, id: &UiWidgetId) -> Option<&'a 
 }
 
 fn push_diag(_state: &mut ScenarioRuntimeState, line: String) {
-    info!("{line}");
+    info!(target: "flux_app::scenario_runner::runtime", "{line}");
 }
 
 fn push_runtime_failure(
@@ -797,20 +872,32 @@ fn push_runtime_failure(
     state.pending_exit = Some(AppExit::error());
 }
 
-fn scenario_diagnostic_log_layer(app: &mut App) -> Option<BoxedLayer> {
-    let config = app.world().get_resource::<ScenarioLogLayerConfig>()?;
+fn initialize_scenario_logger(diagnostic_log_path: &PathBuf) {
     let file = fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(&config.diagnostic_log_path)
-        .ok()?;
+        .open(diagnostic_log_path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "scenario startup failed: cannot open diagnostic log `{}`: {error}",
+                diagnostic_log_path.display()
+            )
+        });
     let filter = bevy::log::tracing_subscriber::filter::FilterFn::new(|meta| {
-        meta.target()
-            .starts_with("flux_app::scenario_runner::runtime")
+        meta.target().starts_with("flux_app::scenario_runner")
     });
-    let layer = bevy::log::tracing_subscriber::fmt::layer()
+    let file_layer = bevy::log::tracing_subscriber::fmt::layer()
         .with_ansi(false)
         .with_writer(Mutex::new(file))
         .with_filter(filter);
-    Some(Box::new(layer))
+    let stderr_layer = bevy::log::tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+    let filter_layer = bevy::log::tracing_subscriber::filter::EnvFilter::builder()
+        .parse_lossy("info,wgpu=warn,naga=warn");
+    let subscriber = bevy::log::tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(stderr_layer)
+        .with(file_layer);
+    bevy::log::tracing::subscriber::set_global_default(subscriber).unwrap_or_else(|error| {
+        panic!("scenario startup failed: cannot initialize tracing subscriber: {error}")
+    });
 }

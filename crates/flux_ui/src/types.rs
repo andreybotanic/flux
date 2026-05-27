@@ -100,6 +100,8 @@ pub enum BindingAction {
     BackMenu,
     DiagnosticLog(String),
     RunWorld,
+    SaveGame(String),
+    LoadGame(String),
     ToggleSimulation,
 }
 

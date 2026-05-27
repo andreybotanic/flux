@@ -17,5 +17,9 @@ flux_mod_loader.workspace = true
 flux_render.workspace = true
 flux_scenario.workspace = true
 flux_sim.workspace = true
+flux_save.workspace = true
 flux_ui.workspace = true
 flux_world.workspace = true
+
+[dev-dependencies]
+image = "0.25"

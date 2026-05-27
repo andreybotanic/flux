@@ -678,33 +678,13 @@ fn run_list_mods() -> i32 {
 }
 
 fn run_list_content() -> i32 {
-    let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
-
-    if !report.errors.is_empty() {
-        eprintln!("errors: {}", report.errors.len());
-        for error in &report.errors {
+    let registry = match load_content_registry_from_mods() {
+        Ok(registry) => registry,
+        Err(error) => {
             eprintln!("{error}");
+            return 1;
         }
-        return 1;
-    }
-
-    let resolved_order = report
-        .resolved_order
-        .as_ref()
-        .expect("resolved order must exist when there are no mod errors");
-
-    let content_report = flux_content::load_content_registry(&report.valid_mods, resolved_order);
-    if !content_report.errors.is_empty() {
-        eprintln!("errors: {}", content_report.errors.len());
-        for error in &content_report.errors {
-            eprintln!("{error}");
-        }
-        return 1;
-    }
-
-    let registry = content_report
-        .registry
-        .expect("content registry must exist when there are no content errors");
+    };
 
     println!(
         "content summary: solid_cells={} substances={} structures={} gases={}",
@@ -767,6 +747,29 @@ fn run_list_content() -> i32 {
     }
 
     0
+}
+
+fn load_content_registry_from_mods() -> Result<flux_content::ContentRegistry, String> {
+    let report = flux_mod_loader::discover_and_resolve_mods(Path::new("mods"));
+    if !report.errors.is_empty() {
+        return Err(format!(
+            "mod resolution failed while loading content registry:\n{}",
+            format_error_block(&report.errors)
+        ));
+    }
+    let resolved_order = report.resolved_order.as_ref().ok_or_else(|| {
+        "mod resolution failed while loading content registry: resolved order is missing".to_owned()
+    })?;
+    let content_report = flux_content::load_content_registry(&report.valid_mods, resolved_order);
+    if !content_report.errors.is_empty() {
+        return Err(format!(
+            "content registry load failed:\n{}",
+            format_error_block(&content_report.errors)
+        ));
+    }
+    content_report
+        .registry
+        .ok_or_else(|| "content registry load failed: registry is missing".to_owned())
 }
 
 fn run_list_scenarios() -> i32 {

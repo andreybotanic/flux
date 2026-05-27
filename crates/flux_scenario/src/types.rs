@@ -30,6 +30,10 @@ pub enum ScenarioStep {
     WaitRealtimeStep(WaitRealtimeStep),
     #[serde(rename = "ResumeSimulation")]
     ResumeSimulationStep(ResumeSimulationStep),
+    #[serde(rename = "SaveGame")]
+    SaveGameStep(SaveGameStep),
+    #[serde(rename = "LoadGame")]
+    LoadGameStep(LoadGameStep),
     #[serde(rename = "TakeScreenshot")]
     TakeScreenshotStep(TakeScreenshotStep),
     #[serde(rename = "AssertUiExists")]
@@ -90,6 +94,14 @@ pub struct WaitRealtimeStep {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResumeSimulationStep {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
+pub struct SaveGameStep(pub String);
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
+pub struct LoadGameStep(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
@@ -157,6 +169,8 @@ impl ScenarioStep {
             ScenarioStep::PauseSimulationStep(_) => "PauseSimulation",
             ScenarioStep::WaitRealtimeStep(_) => "WaitRealtime",
             ScenarioStep::ResumeSimulationStep(_) => "ResumeSimulation",
+            ScenarioStep::SaveGameStep(_) => "SaveGame",
+            ScenarioStep::LoadGameStep(_) => "LoadGame",
             ScenarioStep::TakeScreenshotStep(_) => "TakeScreenshot",
             ScenarioStep::AssertUiExistsStep(_) => "AssertUiExists",
             ScenarioStep::SetCameraPivotStep(_) => "SetCameraPivot",

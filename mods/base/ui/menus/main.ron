@@ -18,6 +18,26 @@ UiMenu(
                 text: "$base.menu.main.run_world",
                 action: RunWorld,
             ),
+            Button(
+                id: "base:widget/main_menu/save_slot_a",
+                text: "$base.menu.main.save_slot_a",
+                action: SaveGame("slot_a"),
+            ),
+            Button(
+                id: "base:widget/main_menu/load_slot_a",
+                text: "$base.menu.main.load_slot_a",
+                action: LoadGame("slot_a"),
+            ),
+            Button(
+                id: "base:widget/main_menu/save_slot_b",
+                text: "$base.menu.main.save_slot_b",
+                action: SaveGame("slot_b"),
+            ),
+            Button(
+                id: "base:widget/main_menu/load_slot_b",
+                text: "$base.menu.main.load_slot_b",
+                action: LoadGame("slot_b"),
+            ),
             ExtensionPoint(
                 id: "base:widget/main_menu/actions_slot",
                 extension_point: "base:ui_ext/main_menu/actions",
