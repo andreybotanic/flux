@@ -318,9 +318,15 @@ impl GasDiffusionGpuBackend {
 }
 
 fn preferred_backends() -> wgpu::Backends {
+    if let Some(from_env) = wgpu::Backends::from_env() {
+        return from_env;
+    }
+
     #[cfg(target_os = "windows")]
     {
-        wgpu::Backends::VULKAN
+        // Prefer explicit desktop backends and avoid unstable "all backends" probing.
+        // This keeps initialization predictable while still supporting systems without Vulkan.
+        wgpu::Backends::DX12 | wgpu::Backends::VULKAN
     }
     #[cfg(target_os = "linux")]
     {
