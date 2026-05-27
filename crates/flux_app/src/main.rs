@@ -278,7 +278,7 @@ fn run_windowed() {
         (
             sync_ui_camera_activity,
             handle_input_bindings,
-            drive_live_simulation,
+            drive_live_simulation.after(handle_input_bindings),
             emit_ui_button_press_events,
             handle_ui_button_actions,
             rebuild_flux_ui_if_needed,
