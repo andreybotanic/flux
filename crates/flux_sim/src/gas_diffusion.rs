@@ -1,105 +1,128 @@
 use std::collections::BTreeMap;
 
-use flux_world::{GasComponent, GasMixture, ParticleCount};
+use flux_world::{GasComponent, GasMixture, ParticleCount, WorldGrid};
 
 use crate::{
-    BackendPolicy, SimError, SimulationBackendId, SimulationStage, SimulationStageBackend,
-    SimulationStageConfig, SimulationStageId, StageExecutionContext,
+    BackendPolicy, GasSimulationBackend, GasStageWorldView, SimError, SimulationBackendId,
+    SimulationStageConfig,
 };
+
+const GAS_SIMULATION_STAGE_NAME: &str = "gas";
+const GAS_SIMULATION_STAGE_ORDER: u16 = 100;
 
 #[derive(Default)]
 pub struct GasDiffusionCpuBackend;
 
-impl SimulationStageBackend for GasDiffusionCpuBackend {
+impl GasSimulationBackend for GasDiffusionCpuBackend {
     fn backend_id(&self) -> SimulationBackendId {
         SimulationBackendId::Cpu
     }
 
-    fn execute(&self, context: &mut StageExecutionContext<'_>) -> Result<(), SimError> {
-        let cell_count = context.world.cell_count();
-        if context.gas_permeability_mask.len() != cell_count {
+    fn execute(
+        &self,
+        _tick: u64,
+        gas_layer: &mut flux_world::GasLayer,
+        world: &GasStageWorldView,
+    ) -> Result<(), SimError> {
+        let cell_count = world
+            .size
+            .cell_count()
+            .expect("grid size should fit usize for gas stage");
+        let permeability_mask = gas_layer.permeability_mask();
+        if permeability_mask.len() != cell_count {
             return Err(SimError::GasPermeabilityMaskSizeMismatch {
                 expected: cell_count,
-                actual: context.gas_permeability_mask.len(),
+                actual: permeability_mask.len(),
             });
         }
 
-        let size = context.world.size();
-        let width = usize::try_from(size.width).expect("grid width should fit usize");
-        let height = usize::try_from(size.height).expect("grid height should fit usize");
+        let width = usize::try_from(world.size.width).expect("grid width should fit usize");
+        let height = usize::try_from(world.size.height).expect("grid height should fit usize");
 
-        let previous = context.world.gas_snapshot();
-        let total_before = total_particles_by_gas(&previous, context.gas_permeability_mask);
+        let previous = gas_layer.snapshot();
+        let total_before = total_particles_by_gas(&previous, permeability_mask);
         let mut next = previous.clone();
 
         for y in 0..height {
             for x in 0..width {
                 let index = (y * width) + x;
-                if !context.gas_permeability_mask[index] {
+                if !permeability_mask[index] {
                     continue;
                 }
                 if x + 1 < width {
                     let neighbor = index + 1;
-                    if context.gas_permeability_mask[neighbor] {
+                    if permeability_mask[neighbor] {
                         diffuse_between_pair(index, neighbor, &previous, &mut next)?;
                     }
                 }
                 if y + 1 < height {
                     let neighbor = index + width;
-                    if context.gas_permeability_mask[neighbor] {
+                    if permeability_mask[neighbor] {
                         diffuse_between_pair(index, neighbor, &previous, &mut next)?;
                     }
                 }
             }
         }
 
-        for (index, permeable) in context.gas_permeability_mask.iter().copied().enumerate() {
+        for (index, permeable) in permeability_mask.iter().copied().enumerate() {
             if !permeable {
                 next[index].clear_all();
             }
         }
 
-        let total_after = total_particles_by_gas(&next, context.gas_permeability_mask);
+        let total_after = total_particles_by_gas(&next, permeability_mask);
         ensure_conservation(&total_before, &total_after)?;
 
-        context
-            .world
-            .replace_gases_from_snapshot(next)
-            .map_err(|source| SimError::GasSnapshotApplyFailed { source })?;
+        gas_layer.replace_all(next);
         Ok(())
     }
 }
 
-pub struct GasDiffusionStage {
+pub struct GasSimulationStage {
     config: SimulationStageConfig,
     cpu_backend: GasDiffusionCpuBackend,
 }
 
-impl GasDiffusionStage {
+impl GasSimulationStage {
     pub fn new(frequency_divider: u64, backend_policy: BackendPolicy) -> Result<Self, SimError> {
         Ok(Self {
             config: SimulationStageConfig::new(
-                SimulationStageId::GasDiffusion,
+                GAS_SIMULATION_STAGE_NAME,
+                GAS_SIMULATION_STAGE_ORDER,
                 frequency_divider,
                 backend_policy,
             )?,
             cpu_backend: GasDiffusionCpuBackend,
         })
     }
-}
 
-impl SimulationStage for GasDiffusionStage {
-    fn config(&self) -> &SimulationStageConfig {
+    #[must_use]
+    pub fn config(&self) -> &SimulationStageConfig {
         &self.config
     }
 
     fn resolve_backend(
         &self,
         policy: BackendPolicy,
-    ) -> Result<&dyn SimulationStageBackend, SimError> {
+    ) -> Result<&dyn GasSimulationBackend, SimError> {
         match policy {
             BackendPolicy::CpuOnly => Ok(&self.cpu_backend),
         }
+    }
+
+    pub fn execute(&self, tick: u64, world: &mut WorldGrid) -> Result<(), SimError> {
+        if !tick.is_multiple_of(self.config.frequency_divider) {
+            return Ok(());
+        }
+        let backend = self
+            .resolve_backend(self.config.backend_policy)
+            .map_err(|_| SimError::BackendResolutionFailed {
+                stage_name: self.config.stage_name,
+                backend_policy: self.config.backend_policy,
+            })?;
+        let world_view = GasStageWorldView { size: world.size() };
+        let gas_layer = world.gas_layer_mut();
+        backend.execute(tick, gas_layer, &world_view)
     }
 }
 
@@ -230,9 +253,9 @@ fn ensure_conservation(
 mod tests {
     use flux_world::{GasPrototypeId, GridSize, ParticleCount, TilePos, WorldGrid};
 
-    use crate::{BackendPolicy, SimulationStage};
+    use crate::BackendPolicy;
 
-    use super::GasDiffusionStage;
+    use super::GasSimulationStage;
 
     fn gas_id(value: &str) -> GasPrototypeId {
         GasPrototypeId::parse(value).expect("valid gas id")
@@ -245,11 +268,8 @@ mod tests {
         world
             .set_gas_particles(TilePos::new(1, 1), gas.clone(), ParticleCount(400))
             .expect("set center gas");
-        let stage = GasDiffusionStage::new(1, BackendPolicy::CpuOnly).expect("stage");
-        let permeability_mask = world.build_gas_permeability_mask();
-        stage
-            .execute(1, &mut world, &permeability_mask)
-            .expect("diffusion should run");
+        let stage = GasSimulationStage::new(1, BackendPolicy::CpuOnly).expect("stage");
+        stage.execute(1, &mut world).expect("diffusion should run");
 
         let center = world
             .gas_at(TilePos::new(1, 1))
@@ -321,11 +341,8 @@ mod tests {
         world
             .set_gas_particles(TilePos::new(1, 0), gas.clone(), ParticleCount(120))
             .expect("set valid gas");
-        let stage = GasDiffusionStage::new(1, BackendPolicy::CpuOnly).expect("stage");
-        let permeability_mask = world.build_gas_permeability_mask();
-        stage
-            .execute(1, &mut world, &permeability_mask)
-            .expect("diffusion should run");
+        let stage = GasSimulationStage::new(1, BackendPolicy::CpuOnly).expect("stage");
+        stage.execute(1, &mut world).expect("diffusion should run");
 
         assert_eq!(
             world
@@ -346,7 +363,7 @@ mod tests {
     #[test]
     fn same_input_produces_same_output() {
         let gas = gas_id("base:gas/oxygen");
-        let stage = GasDiffusionStage::new(1, BackendPolicy::CpuOnly).expect("stage");
+        let stage = GasSimulationStage::new(1, BackendPolicy::CpuOnly).expect("stage");
 
         let mut world_a = WorldGrid::new(GridSize::new(4, 1)).expect("world");
         let mut world_b = WorldGrid::new(GridSize::new(4, 1)).expect("world");
@@ -356,10 +373,8 @@ mod tests {
         world_b
             .set_gas_particles(TilePos::new(1, 0), gas.clone(), ParticleCount(200))
             .expect("seed");
-        let mask_a = world_a.build_gas_permeability_mask();
-        let mask_b = world_b.build_gas_permeability_mask();
-        stage.execute(1, &mut world_a, &mask_a).expect("run A");
-        stage.execute(1, &mut world_b, &mask_b).expect("run B");
+        stage.execute(1, &mut world_a).expect("run A");
+        stage.execute(1, &mut world_b).expect("run B");
 
         for x in 0..4 {
             assert_eq!(

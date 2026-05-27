@@ -138,7 +138,7 @@ impl ExecutableInputAction for RunWorldAction {
             return ActionExecutionFlow::Continue;
         }
 
-        let Some(world) = context.sim_state.runtime.world_mut() else {
+        let Some(world) = context.sim_state.runtime.world() else {
             error!("RunWorld failed: world is missing after initialization");
             return ActionExecutionFlow::Continue;
         };

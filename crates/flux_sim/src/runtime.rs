@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use flux_world::{GridSize, WorldGrid};
+use flux_world::{
+    GasPrototypeId, GridSize, ParticleCount, SolidCellPrototypeId, StructureInstanceId,
+    StructurePrototypeId, TilePos, WorldGrid,
+};
 
 use crate::{
     CommandQueue, EventQueue, FixedTick, SimCommand, SimError, SimEvent, SimulationPipeline,
@@ -12,7 +15,6 @@ pub struct SimRuntime {
     tick_counter: u64,
     world: Option<WorldGrid>,
     world_seed: Option<u64>,
-    gas_permeability_mask: Vec<bool>,
     pipeline: SimulationPipeline,
     commands: CommandQueue,
     events: EventQueue,
@@ -26,7 +28,6 @@ impl SimRuntime {
             tick_counter: 0,
             world: None,
             world_seed: None,
-            gas_permeability_mask: Vec::new(),
             pipeline: SimulationPipeline::new_default()?,
             commands: CommandQueue::new(),
             events: EventQueue::new(),
@@ -51,11 +52,6 @@ impl SimRuntime {
     #[must_use]
     pub fn world(&self) -> Option<&WorldGrid> {
         self.world.as_ref()
-    }
-
-    #[must_use]
-    pub fn world_mut(&mut self) -> Option<&mut WorldGrid> {
-        self.world.as_mut()
     }
 
     #[must_use]
@@ -85,18 +81,69 @@ impl SimRuntime {
     }
 
     pub fn load_world_state(&mut self, world: WorldGrid, seed: u64, tick: u64) {
-        self.gas_permeability_mask = world.build_gas_permeability_mask();
         self.world = Some(world);
         self.world_seed = Some(seed);
         self.tick_counter = tick;
         self.initialized = true;
     }
 
-    pub fn rebuild_gas_permeability_mask(&mut self) {
-        self.gas_permeability_mask = self
-            .world
-            .as_ref()
-            .map_or_else(Vec::new, WorldGrid::build_gas_permeability_mask);
+    pub fn set_solid_cell_at(
+        &mut self,
+        pos: TilePos,
+        solid: Option<SolidCellPrototypeId>,
+    ) -> Result<(), SimError> {
+        let world = self.world_for_mutation("set_solid_cell_at")?;
+        world
+            .set_solid_cell_at(pos, solid)
+            .map_err(|source| SimError::WorldMutationFailed {
+                operation: "set_solid_cell_at",
+                source,
+            })
+    }
+
+    pub fn set_gas_particles_at(
+        &mut self,
+        pos: TilePos,
+        gas: GasPrototypeId,
+        particles: ParticleCount,
+    ) -> Result<(), SimError> {
+        let world = self.world_for_mutation("set_gas_particles_at")?;
+        world
+            .set_gas_particles(pos, gas, particles)
+            .map_err(|source| SimError::WorldMutationFailed {
+                operation: "set_gas_particles_at",
+                source,
+            })
+    }
+
+    pub fn place_structure(
+        &mut self,
+        prototype: StructurePrototypeId,
+        origin: TilePos,
+    ) -> Result<StructureInstanceId, SimError> {
+        let world = self.world_for_mutation("place_structure")?;
+        world.place_structure(prototype, origin).map_err(|source| {
+            SimError::StructureMutationFailed {
+                operation: "place_structure",
+                source,
+            }
+        })
+    }
+
+    pub fn remove_structure(&mut self, instance_id: StructureInstanceId) -> Result<(), SimError> {
+        let world = self.world_for_mutation("remove_structure")?;
+        world
+            .remove_structure(instance_id)
+            .map_err(|source| SimError::StructureMutationFailed {
+                operation: "remove_structure",
+                source,
+            })
+    }
+
+    fn world_for_mutation(&mut self, operation: &'static str) -> Result<&mut WorldGrid, SimError> {
+        self.world
+            .as_mut()
+            .ok_or(SimError::WorldNotLoadedForMutation { operation })
     }
 
     fn process_queued_commands(&mut self) -> Result<(), SimError> {
@@ -109,8 +156,7 @@ impl SimRuntime {
     pub fn step(&mut self) -> Result<(), SimError> {
         self.add_ticks(1)?;
         if let Some(world) = self.world.as_mut() {
-            self.pipeline
-                .execute_tick(self.tick_counter, world, &self.gas_permeability_mask)?;
+            self.pipeline.execute_tick(self.tick_counter, world)?;
         }
         Ok(())
     }
@@ -137,7 +183,6 @@ impl SimRuntime {
             height,
             source,
         })?;
-        self.gas_permeability_mask = world.build_gas_permeability_mask();
         self.world = Some(world);
         self.world_seed = Some(seed);
         self.events.enqueue(SimEvent::WorldCreated {
@@ -171,7 +216,9 @@ impl SimRuntime {
 mod tests {
     use std::time::Duration;
 
-    use flux_world::{GasPrototypeId, GridSize, ParticleCount, TilePos, WorldGrid};
+    use flux_world::{
+        GasPrototypeId, GridSize, ParticleCount, SolidCellPrototypeId, TilePos, WorldGrid,
+    };
 
     use crate::{SimCommand, SimError, SimEvent, SimRuntime};
 
@@ -332,9 +379,7 @@ mod tests {
         runtime.initialize().expect("init");
         let oxygen = GasPrototypeId::parse("base:gas/oxygen").expect("id");
         runtime
-            .world_mut()
-            .expect("world")
-            .set_gas_particles(TilePos::new(1, 0), oxygen.clone(), ParticleCount(120))
+            .set_gas_particles_at(TilePos::new(1, 0), oxygen.clone(), ParticleCount(120))
             .expect("seed gas");
 
         runtime.step().expect("step");
@@ -347,5 +392,52 @@ mod tests {
             .particles_of(&oxygen)
             .0;
         assert!(left > 0, "expected diffusion to move gas to left neighbor");
+    }
+
+    #[test]
+    fn set_solid_cell_rebuilds_gas_permeability_mask_immediately() {
+        let mut runtime = runtime();
+        runtime
+            .enqueue_command(SimCommand::CreateWorld {
+                width: 2,
+                height: 1,
+                seed: 1,
+            })
+            .expect("enqueue");
+        runtime.initialize().expect("init");
+        let oxygen = GasPrototypeId::parse("base:gas/oxygen").expect("id");
+        let solid = SolidCellPrototypeId::parse("base:solid_cell/floor_cell").expect("id");
+        runtime
+            .set_gas_particles_at(TilePos::new(0, 0), oxygen.clone(), ParticleCount(120))
+            .expect("seed gas");
+        runtime
+            .set_solid_cell_at(TilePos::new(1, 0), Some(solid))
+            .expect("set solid");
+
+        runtime.step().expect("step");
+
+        let right = runtime
+            .world()
+            .expect("world")
+            .gas_at(TilePos::new(1, 0))
+            .expect("cell")
+            .particles_of(&oxygen)
+            .0;
+        assert_eq!(right, 0);
+    }
+
+    #[test]
+    fn set_solid_cell_without_world_returns_structured_error() {
+        let mut runtime = runtime();
+        let solid = SolidCellPrototypeId::parse("base:solid_cell/floor_cell").expect("id");
+        let error = runtime
+            .set_solid_cell_at(TilePos::new(0, 0), Some(solid))
+            .expect_err("must fail");
+        assert_eq!(
+            error,
+            SimError::WorldNotLoadedForMutation {
+                operation: "set_solid_cell_at",
+            }
+        );
     }
 }

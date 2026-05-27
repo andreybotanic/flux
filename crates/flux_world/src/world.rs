@@ -58,6 +58,15 @@ impl WorldGrid {
     }
 
     #[must_use]
+    pub fn gas_layer(&self) -> &GasLayer {
+        &self.gases
+    }
+
+    pub fn gas_layer_mut(&mut self) -> &mut GasLayer {
+        &mut self.gases
+    }
+
+    #[must_use]
     pub fn structure_occupancy(&self) -> &StructureOccupancyIndex {
         &self.structure_occupancy
     }
@@ -73,12 +82,14 @@ impl WorldGrid {
         pos: TilePos,
         solid: Option<SolidCellPrototypeId>,
     ) -> Result<(), WorldGridError> {
+        let gas_permeable = solid.is_none();
         let index = self
             .cell_index(pos)
             .ok_or_else(|| WorldGridError::position_out_of_bounds(pos, self.size))?;
         self.solid_cells
             .set(index.0, solid)
             .expect("index validated by cell_index");
+        self.gases.update_permeability_mask(index, gas_permeable)?;
         Ok(())
     }
 
@@ -124,12 +135,7 @@ impl WorldGrid {
 
     #[must_use]
     pub fn build_gas_permeability_mask(&self) -> Vec<bool> {
-        let mut mask = Vec::with_capacity(self.cell_count());
-        for index in 0..self.cell_count() {
-            let permeable = self.solid_cells.get(index).flatten().is_none();
-            mask.push(permeable);
-        }
-        mask
+        self.gases.permeability_mask().to_vec()
     }
 
     #[must_use]

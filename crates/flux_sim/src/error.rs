@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{BackendPolicy, SimulationStageId};
+use crate::BackendPolicy;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum SimError {
@@ -20,20 +20,37 @@ pub enum SimError {
     #[error("tick counter overflow: current={current}, delta={delta}")]
     TickCounterOverflow { current: u64, delta: u64 },
 
+    #[error("world mutation failed: world is not loaded for operation `{operation}`")]
+    WorldNotLoadedForMutation { operation: &'static str },
+
+    #[error("world mutation failed during `{operation}`: {source}")]
+    WorldMutationFailed {
+        operation: &'static str,
+        source: flux_world::WorldGridError,
+    },
+
+    #[error("structure mutation failed during `{operation}`: {source}")]
+    StructureMutationFailed {
+        operation: &'static str,
+        source: flux_world::StructurePlacementError,
+    },
+
     #[error(
-        "invalid stage frequency divider for stage `{stage_id}`: frequency_divider must be greater than zero, got {frequency_divider}"
+        "invalid stage frequency divider for stage `{stage_name}`: frequency_divider must be greater than zero, got {frequency_divider}"
     )]
     InvalidStageFrequencyDivider {
-        stage_id: SimulationStageId,
+        stage_name: &'static str,
         frequency_divider: u64,
     },
 
-    #[error("duplicate stage registration for stage `{stage_id}`")]
-    DuplicateStageRegistration { stage_id: SimulationStageId },
+    #[error("duplicate stage registration for stage `{stage_name}`")]
+    DuplicateStageRegistration { stage_name: &'static str },
 
-    #[error("cannot resolve backend for stage `{stage_id}` with policy `{backend_policy}` in S14")]
+    #[error(
+        "cannot resolve backend for stage `{stage_name}` with policy `{backend_policy}` in S14"
+    )]
     BackendResolutionFailed {
-        stage_id: SimulationStageId,
+        stage_name: &'static str,
         backend_policy: BackendPolicy,
     },
 

@@ -13,10 +13,10 @@ pub use command::{CommandQueue, SimCommand};
 pub use error::SimError;
 pub use event::{EventQueue, SimEvent};
 pub use fixed_tick::FixedTick;
-pub use gas_diffusion::GasDiffusionStage;
+pub use gas_diffusion::GasSimulationStage;
 pub use pipeline::SimulationPipeline;
 pub use runtime::SimRuntime;
 pub use stage::{
-    BackendPolicy, SimulationBackendId, SimulationStage, SimulationStageBackend,
-    SimulationStageConfig, SimulationStageId, StageExecutionContext,
+    BackendPolicy, GasSimulationBackend, GasStageWorldView, SimulationBackendId, SimulationStage,
+    SimulationStageConfig,
 };

@@ -11,6 +11,8 @@ use flux_save::{load_game, save_game};
 use flux_world::{GridSize, ParticleCount, TilePos, WorldGrid};
 
 static SAVE_TEST_MUTEX: Mutex<()> = Mutex::new(());
+const SCENARIO_GAS_SLOT_A: &str = "scenario_gas_slot_a";
+const SCENARIO_GAS_SLOT_B: &str = "scenario_gas_slot_b";
 
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -277,7 +279,7 @@ fn generate_diffusion_slot_saves(saves_dir: &Path) {
     slot_a_world
         .set_gas_particles(TilePos::new(1, 0), oxygen, ParticleCount(120))
         .expect("set gas");
-    save_game(saves_dir, "slot_a", &slot_a_world, 42, 0).expect("save slot_a");
+    save_game(saves_dir, SCENARIO_GAS_SLOT_A, &slot_a_world, 42, 0).expect("save slot_a");
 }
 
 fn count_world_layers(world: &flux_world::WorldGrid) -> (usize, usize, usize) {
@@ -411,8 +413,8 @@ fn gas_diffusion_scenarios_roundtrip_slot_values() {
 
     let _ = fs::remove_dir_all(&scenario_a_artifacts);
     let _ = fs::remove_dir_all(&scenario_b_artifacts);
-    let _ = fs::remove_dir_all(saves_dir.join("slot_a"));
-    let _ = fs::remove_dir_all(saves_dir.join("slot_b"));
+    let _ = fs::remove_dir_all(saves_dir.join(SCENARIO_GAS_SLOT_A));
+    let _ = fs::remove_dir_all(saves_dir.join(SCENARIO_GAS_SLOT_B));
 
     let registry = load_registry_for_save_layer_decode();
     generate_diffusion_slot_saves(&saves_dir);
@@ -444,8 +446,8 @@ fn gas_diffusion_scenarios_roundtrip_slot_values() {
         ],
     );
 
-    let slot_a = load_game(&saves_dir, "slot_a", &registry).expect("slot_a should load");
-    let slot_b = load_game(&saves_dir, "slot_b", &registry).expect("slot_b should load");
+    let slot_a = load_game(&saves_dir, SCENARIO_GAS_SLOT_A, &registry).expect("slot_a should load");
+    let slot_b = load_game(&saves_dir, SCENARIO_GAS_SLOT_B, &registry).expect("slot_b should load");
     let oxygen = flux_core::PrototypeId::parse("base:gas/oxygen").expect("gas id");
     assert_eq!(slot_a.tick, 0);
     assert_eq!(

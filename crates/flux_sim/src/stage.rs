@@ -1,28 +1,9 @@
 use std::fmt::{Display, Formatter};
 
-use flux_world::WorldGrid;
+use flux_world::{GasLayer, GridSize, WorldGrid};
 
 use crate::SimError;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SimulationStageId {
-    GasDiffusion,
-}
-
-impl SimulationStageId {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::GasDiffusion => "gas_diffusion",
-        }
-    }
-}
-
-impl Display for SimulationStageId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+use crate::gas_diffusion::GasSimulationStage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SimulationBackendId {
@@ -66,67 +47,72 @@ impl Display for BackendPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimulationStageConfig {
-    pub stage_id: SimulationStageId,
+    pub stage_name: &'static str,
+    pub execution_order: u16,
     pub frequency_divider: u64,
     pub backend_policy: BackendPolicy,
 }
 
 impl SimulationStageConfig {
     pub fn new(
-        stage_id: SimulationStageId,
+        stage_name: &'static str,
+        execution_order: u16,
         frequency_divider: u64,
         backend_policy: BackendPolicy,
     ) -> Result<Self, SimError> {
         if frequency_divider == 0 {
             return Err(SimError::InvalidStageFrequencyDivider {
-                stage_id,
+                stage_name,
                 frequency_divider,
             });
         }
         Ok(Self {
-            stage_id,
+            stage_name,
+            execution_order,
             frequency_divider,
             backend_policy,
         })
     }
 }
 
-pub struct StageExecutionContext<'a> {
-    pub tick: u64,
-    pub world: &'a mut WorldGrid,
-    pub gas_permeability_mask: &'a [bool],
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GasStageWorldView {
+    pub size: GridSize,
 }
 
-pub trait SimulationStageBackend: Send + Sync {
+pub trait GasSimulationBackend: Send + Sync {
     fn backend_id(&self) -> SimulationBackendId;
-
-    fn execute(&self, context: &mut StageExecutionContext<'_>) -> Result<(), SimError>;
-}
-
-pub trait SimulationStage: Send + Sync {
-    fn config(&self) -> &SimulationStageConfig;
-
-    fn resolve_backend(
-        &self,
-        policy: BackendPolicy,
-    ) -> Result<&dyn SimulationStageBackend, SimError>;
 
     fn execute(
         &self,
         tick: u64,
-        world: &mut WorldGrid,
-        gas_permeability_mask: &[bool],
-    ) -> Result<(), SimError> {
-        let config = self.config();
-        if !tick.is_multiple_of(config.frequency_divider) {
-            return Ok(());
+        gas_layer: &mut GasLayer,
+        world: &GasStageWorldView,
+    ) -> Result<(), SimError>;
+}
+
+pub enum SimulationStage {
+    Gas(GasSimulationStage),
+}
+
+impl SimulationStage {
+    #[must_use]
+    pub fn stage_name(&self) -> &'static str {
+        match self {
+            Self::Gas(stage) => stage.config().stage_name,
         }
-        let backend = self.resolve_backend(config.backend_policy)?;
-        let mut context = StageExecutionContext {
-            tick,
-            world,
-            gas_permeability_mask,
-        };
-        backend.execute(&mut context)
+    }
+
+    #[must_use]
+    pub fn execution_order(&self) -> u16 {
+        match self {
+            Self::Gas(stage) => stage.config().execution_order,
+        }
+    }
+
+    pub fn execute(&self, tick: u64, world: &mut WorldGrid) -> Result<(), SimError> {
+        match self {
+            Self::Gas(stage) => stage.execute(tick, world),
+        }
     }
 }

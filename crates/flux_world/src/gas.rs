@@ -1,4 +1,4 @@
-use crate::{GasMixtureError, GasPrototypeId};
+use crate::{CellIndex, GasMixtureError, GasPrototypeId, WorldGridError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct ParticleCount(pub u64);
@@ -118,6 +118,7 @@ impl GasMixture {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GasLayer {
     cells: Vec<GasMixture>,
+    permeability_mask: Vec<bool>,
 }
 
 impl GasLayer {
@@ -125,6 +126,7 @@ impl GasLayer {
     pub fn new(cell_count: usize) -> Self {
         Self {
             cells: vec![GasMixture::default(); cell_count],
+            permeability_mask: vec![true; cell_count],
         }
     }
 
@@ -142,8 +144,44 @@ impl GasLayer {
         self.cells.clone()
     }
 
+    #[must_use]
+    pub fn permeability_mask(&self) -> &[bool] {
+        &self.permeability_mask
+    }
+
+    pub fn rebuild_permeability_mask(
+        &mut self,
+        permeability_mask: Vec<bool>,
+    ) -> Result<(), WorldGridError> {
+        let expected = self.cells.len();
+        let actual = permeability_mask.len();
+        if actual != expected {
+            return Err(WorldGridError::GasLayerSizeMismatch { expected, actual });
+        }
+        self.permeability_mask = permeability_mask;
+        Ok(())
+    }
+
+    pub fn update_permeability_mask(
+        &mut self,
+        index: CellIndex,
+        permeable: bool,
+    ) -> Result<(), WorldGridError> {
+        let Some(value) = self.permeability_mask.get_mut(index.0) else {
+            return Err(WorldGridError::GasLayerSizeMismatch {
+                expected: self.permeability_mask.len(),
+                actual: index.0.saturating_add(1),
+            });
+        };
+        *value = permeable;
+        Ok(())
+    }
+
     pub fn replace_all(&mut self, cells: Vec<GasMixture>) {
         self.cells = cells;
+        if self.permeability_mask.len() != self.cells.len() {
+            self.permeability_mask.resize(self.cells.len(), true);
+        }
     }
 
     #[must_use]
@@ -276,5 +314,14 @@ mod tests {
             layer.get(1).expect("cell exists").total_particles(),
             ParticleCount(11)
         );
+    }
+
+    #[test]
+    fn permeability_mask_supports_point_updates() {
+        let mut layer = GasLayer::new(3);
+        layer
+            .update_permeability_mask(CellIndex(1), false)
+            .expect("update");
+        assert_eq!(layer.permeability_mask(), &[true, false, true]);
     }
 }

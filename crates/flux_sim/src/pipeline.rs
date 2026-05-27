@@ -1,48 +1,57 @@
-use std::collections::BTreeSet;
-
 use flux_world::WorldGrid;
 
-use crate::gas_diffusion::GasDiffusionStage;
-use crate::{BackendPolicy, SimError, SimulationStage, SimulationStageId};
+use crate::gas_diffusion::GasSimulationStage;
+use crate::{BackendPolicy, SimError, SimulationStage};
+
+struct StageRegistration {
+    name: &'static str,
+    order: u16,
+    stage: SimulationStage,
+}
 
 pub struct SimulationPipeline {
-    stages: Vec<Box<dyn SimulationStage>>,
-    stage_ids: BTreeSet<SimulationStageId>,
+    stage_registry: Vec<StageRegistration>,
 }
 
 impl SimulationPipeline {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            stages: Vec::new(),
-            stage_ids: BTreeSet::new(),
+            stage_registry: Vec::new(),
         }
     }
 
     pub fn new_default() -> Result<Self, SimError> {
         let mut pipeline = Self::new();
-        pipeline.register_stage(Box::new(GasDiffusionStage::new(1, BackendPolicy::CpuOnly)?))?;
+        pipeline.register_stage(SimulationStage::Gas(GasSimulationStage::new(
+            1,
+            BackendPolicy::CpuOnly,
+        )?))?;
         Ok(pipeline)
     }
 
-    pub fn register_stage(&mut self, stage: Box<dyn SimulationStage>) -> Result<(), SimError> {
-        let stage_id = stage.config().stage_id;
-        if self.stage_ids.contains(&stage_id) {
-            return Err(SimError::DuplicateStageRegistration { stage_id });
+    pub fn register_stage(&mut self, stage: SimulationStage) -> Result<(), SimError> {
+        let stage_name = stage.stage_name();
+        if self
+            .stage_registry
+            .iter()
+            .any(|entry| entry.name == stage_name)
+        {
+            return Err(SimError::DuplicateStageRegistration { stage_name });
         }
-        self.stage_ids.insert(stage_id);
-        self.stages.push(stage);
+        self.stage_registry.push(StageRegistration {
+            name: stage_name,
+            order: stage.execution_order(),
+            stage,
+        });
+        self.stage_registry
+            .sort_by(|left, right| left.order.cmp(&right.order).then(left.name.cmp(right.name)));
         Ok(())
     }
 
-    pub fn execute_tick(
-        &self,
-        tick: u64,
-        world: &mut WorldGrid,
-        gas_permeability_mask: &[bool],
-    ) -> Result<(), SimError> {
-        for stage in &self.stages {
-            stage.execute(tick, world, gas_permeability_mask)?;
+    pub fn execute_tick(&self, tick: u64, world: &mut WorldGrid) -> Result<(), SimError> {
+        for registration in &self.stage_registry {
+            registration.stage.execute(tick, world)?;
         }
         Ok(())
     }
@@ -60,130 +69,67 @@ mod tests {
 
     use flux_world::{GasPrototypeId, GridSize, ParticleCount, TilePos, WorldGrid};
 
-    use crate::{
-        BackendPolicy, SimRuntime, SimulationBackendId, SimulationStage, SimulationStageBackend,
-        SimulationStageConfig, SimulationStageId, StageExecutionContext,
-    };
+    use crate::{BackendPolicy, SimRuntime, SimulationStage};
 
     use super::SimulationPipeline;
 
-    #[derive(Default)]
-    struct SetCellBackend {
-        tick_offset: u64,
-    }
-
-    impl SimulationStageBackend for SetCellBackend {
-        fn backend_id(&self) -> SimulationBackendId {
-            SimulationBackendId::Cpu
-        }
-
-        fn execute(&self, context: &mut StageExecutionContext<'_>) -> Result<(), crate::SimError> {
-            let gas = GasPrototypeId::parse("base:gas/oxygen").expect("id");
-            let value = context.tick.saturating_add(self.tick_offset);
-            context
-                .world
-                .set_gas_particles(TilePos::new(0, 0), gas, ParticleCount(value))
-                .map_err(|source| crate::SimError::GasSnapshotApplyFailed { source })?;
-            Ok(())
-        }
-    }
-
-    struct TestStage {
-        config: SimulationStageConfig,
-        backend: SetCellBackend,
-    }
-
-    impl SimulationStage for TestStage {
-        fn config(&self) -> &SimulationStageConfig {
-            &self.config
-        }
-
-        fn resolve_backend(
-            &self,
-            policy: BackendPolicy,
-        ) -> Result<&dyn SimulationStageBackend, crate::SimError> {
-            if policy != BackendPolicy::CpuOnly {
-                return Err(crate::SimError::BackendResolutionFailed {
-                    stage_id: self.config.stage_id,
-                    backend_policy: policy,
-                });
-            }
-            Ok(&self.backend)
-        }
-    }
-
     #[test]
-    fn registration_rejects_duplicate_stage_ids() {
+    fn registration_rejects_duplicate_stage_names() {
         let mut pipeline = SimulationPipeline::new();
-        let stage_a = TestStage {
-            config: SimulationStageConfig::new(
-                SimulationStageId::GasDiffusion,
-                1,
-                BackendPolicy::CpuOnly,
-            )
-            .expect("config"),
-            backend: SetCellBackend::default(),
-        };
-        let stage_b = TestStage {
-            config: SimulationStageConfig::new(
-                SimulationStageId::GasDiffusion,
-                2,
-                BackendPolicy::CpuOnly,
-            )
-            .expect("config"),
-            backend: SetCellBackend::default(),
-        };
-        pipeline
-            .register_stage(Box::new(stage_a))
-            .expect("first stage");
+        let stage_a = SimulationStage::Gas(
+            crate::gas_diffusion::GasSimulationStage::new(1, BackendPolicy::CpuOnly)
+                .expect("stage A"),
+        );
+        let stage_b = SimulationStage::Gas(
+            crate::gas_diffusion::GasSimulationStage::new(2, BackendPolicy::CpuOnly)
+                .expect("stage B"),
+        );
+        pipeline.register_stage(stage_a).expect("first stage");
         let error = pipeline
-            .register_stage(Box::new(stage_b))
-            .expect_err("duplicate stage id must fail");
-        assert!(matches!(
+            .register_stage(stage_b)
+            .expect_err("duplicate stage name must fail");
+        assert_eq!(
             error,
-            crate::SimError::DuplicateStageRegistration {
-                stage_id: SimulationStageId::GasDiffusion
-            }
-        ));
+            crate::SimError::DuplicateStageRegistration { stage_name: "gas" }
+        );
     }
 
     #[test]
     fn stage_frequency_gates_execution() {
         let mut pipeline = SimulationPipeline::new();
-        let stage = TestStage {
-            config: SimulationStageConfig::new(
-                SimulationStageId::GasDiffusion,
-                2,
-                BackendPolicy::CpuOnly,
-            )
-            .expect("config"),
-            backend: SetCellBackend { tick_offset: 100 },
-        };
         pipeline
-            .register_stage(Box::new(stage))
+            .register_stage(SimulationStage::Gas(
+                crate::gas_diffusion::GasSimulationStage::new(2, BackendPolicy::CpuOnly)
+                    .expect("stage"),
+            ))
             .expect("stage should register");
 
-        let mut world = WorldGrid::new(GridSize::new(2, 2)).expect("world");
-        let mask = world.build_gas_permeability_mask();
+        let mut world = WorldGrid::new(GridSize::new(3, 1)).expect("world");
+        let gas = GasPrototypeId::parse("base:gas/oxygen").expect("id");
+        world
+            .set_gas_particles(TilePos::new(1, 0), gas.clone(), ParticleCount(120))
+            .expect("seed");
+
         pipeline
-            .execute_tick(1, &mut world, &mask)
+            .execute_tick(1, &mut world)
             .expect("tick 1 should skip");
         assert_eq!(
             world
                 .gas_at(TilePos::new(0, 0))
                 .expect("cell")
-                .total_particles(),
+                .particles_of(&gas),
             ParticleCount(0)
         );
         pipeline
-            .execute_tick(2, &mut world, &mask)
+            .execute_tick(2, &mut world)
             .expect("tick 2 should run");
-        assert_eq!(
+        assert!(
             world
                 .gas_at(TilePos::new(0, 0))
                 .expect("cell")
-                .total_particles(),
-            ParticleCount(102)
+                .particles_of(&gas)
+                .0
+                > 0
         );
     }
 
@@ -202,13 +148,8 @@ mod tests {
             .expect("runtime should process commands");
         let gas = GasPrototypeId::parse("base:gas/oxygen").expect("id");
         runtime
-            .world_mut()
-            .expect("world")
-            .set_gas_particles(TilePos::new(1, 0), gas.clone(), ParticleCount(120))
+            .set_gas_particles_at(TilePos::new(1, 0), gas.clone(), ParticleCount(120))
             .expect("seed gas");
-        runtime
-            .initialize()
-            .expect("no-op initialize after world mutation");
         runtime.step().expect("step should run");
         let left = runtime
             .world()

@@ -2,7 +2,7 @@ Scenario(
     id: "test_scenarios:scenario/gas_diffusion_slot_a_to_b",
     steps: [
         Log("gas diffusion slot_a->slot_b started"),
-        LoadGame("slot_a"),
+        LoadGame("scenario_gas_slot_a"),
         AssertGasParticlesEq((gas: "base:gas/oxygen", cell: (x: 1, y: 0), value: 120)),
         AssertGasParticlesEq((gas: None, value: 120)),
         WaitTicks(1),
@@ -11,7 +11,7 @@ Scenario(
         AssertGasParticlesEq((gas: "base:gas/oxygen", cell: (x: 1, y: 0), value: 60)),
         AssertGasParticlesEq((gas: "base:gas/oxygen", cell: (x: 2, y: 0), value: 30)),
         AssertGasParticlesEq((gas: None, value: 120)),
-        SaveGame("slot_b"),
+        SaveGame("scenario_gas_slot_b"),
         Log("gas diffusion slot_a->slot_b finished"),
     ],
 )

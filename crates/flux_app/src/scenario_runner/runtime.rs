@@ -463,7 +463,7 @@ fn create_world(
         .runtime
         .initialize()
         .map_err(|error| format!("cannot initialize runtime after CreateWorld: {error}"))?;
-    let Some(world) = sim_state.runtime.world_mut() else {
+    let Some(world) = sim_state.runtime.world() else {
         return Err("world is missing after CreateWorld".to_owned());
     };
     let snapshot = world_debug::build_world_render_snapshot(world, &world_debug_content.registry)
