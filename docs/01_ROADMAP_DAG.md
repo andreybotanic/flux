@@ -71,10 +71,6 @@ S08 -> S17
 S03 -> S18
 S04 -> S18
 S05 -> S18
-S06 -> S19
-S12 -> S19
-S13 -> S19
-S15 -> S19
 ```
 
 ## Этапы
@@ -96,11 +92,10 @@ S15 -> S19
 | S12 | `docs/stages/S12_SCENARIO_RUNNER_UI_SCREENSHOT.md` | Scenario runner with UI, screenshot and diagnostic logs | S09, S10, S11 | S13, S14 |
 | S13 | `docs/stages/S13_SAVE_LOAD_MVP.md` | Save/load MVP | S08, S09 | S11, S14 |
 | S14 | `docs/stages/S14_CPU_SIM_TOY.md` | CPU toy simulation | S08 | S11, S12, S13, S16 |
-| S15 | `docs/stages/S15_REPLAY_DETERMINISM.md` | Replay/determinism harness | S09, S14 | S16, S17 |
+| S15 | `docs/stages/S15_GPU_BACKEND_SPIKE.md` | GPU backend contract + compute spike | S08 | S15, S16, S18 |
 | S16 | `docs/stages/S16_WASM_PLUGIN_SPIKE.md` | WASM plugin spike | S03, S08 | S14, S15, S17 |
-| S17 | `docs/stages/S17_GPU_BACKEND_SPIKE.md` | GPU backend contract + compute spike | S08 | S15, S16, S18 |
-| S18 | `docs/stages/S18_DLC_AS_MOD_PROOF.md` | DLC as official mod proof | S03, S04, S05 | S17 |
-| S19 | `docs/stages/S19_INTEGRATION_VERTICAL_SLICE.md` | Integration vertical slice | S06, S12, S13, S15 | — |
+| S17 | `docs/stages/S17_DLC_AS_MOD_PROOF.md` | DLC as official mod proof | S03, S04, S05 | S17 |
+| S18 | `docs/stages/S18_INTEGRATION_VERTICAL_SLICE.md` | Integration vertical slice | S06, S12, S13, S15 | — |
 
 ## Правила параллельной работы
 

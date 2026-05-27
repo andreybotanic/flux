@@ -1,15 +1,4 @@
-﻿# S19 — Integration vertical slice
-
-## Depends on
-
-- S06
-- S12
-- S13
-- S15
-
-## Можно выполнять параллельно с
-
-- Нет.
+﻿# S18 — Integration vertical slice
 
 ## Цель этапа
 

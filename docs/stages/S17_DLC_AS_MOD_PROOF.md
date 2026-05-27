@@ -1,14 +1,4 @@
-﻿# S18 — DLC as official mod proof
-
-## Depends on
-
-- S03
-- S04
-- S05
-
-## Можно выполнять параллельно с
-
-- S17
+﻿# S17 — DLC as official mod proof
 
 ## Цель этапа
 
