@@ -10,4 +10,6 @@ path = "src/lib.rs"
 
 [dependencies]
 flux_world.workspace = true
+log = "0.4"
 thiserror = "2"
+wgpu = "26"

@@ -68,3 +68,42 @@ pub(crate) fn print_discovered_mod(module: &DiscoveredMod) {
         module.directory_path.display()
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use flux_core::PrototypeId;
+    use flux_scenario::{
+        LoadedScenario, ScenarioDefinition, ScenarioSource, ScenarioStep, WaitTicksStep,
+    };
+
+    use super::{ScenarioLookupError, find_scenario_by_id};
+
+    #[test]
+    fn reports_nonexistent_scenario_id() {
+        let scenarios = vec![LoadedScenario {
+            definition: ScenarioDefinition {
+                id: PrototypeId::parse("test_scenarios:scenario/bootstrap_smoke").expect("id"),
+                steps: vec![ScenarioStep::WaitTicksStep(WaitTicksStep(1))],
+            },
+            source: ScenarioSource {
+                mod_id: "test_scenarios".to_owned(),
+                file: "mods/test_scenarios/scenarios/bootstrap_smoke.ron".to_owned(),
+            },
+        }];
+        let missing_id =
+            PrototypeId::parse("test_scenarios:scenario/does_not_exist").expect("valid id");
+
+        let error = find_scenario_by_id(&scenarios, &missing_id).expect_err("must be missing");
+        assert_eq!(
+            error,
+            ScenarioLookupError::NotFound {
+                scenario_id: "test_scenarios:scenario/does_not_exist".to_owned()
+            }
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("scenario_id: test_scenarios:scenario/does_not_exist")
+        );
+    }
+}

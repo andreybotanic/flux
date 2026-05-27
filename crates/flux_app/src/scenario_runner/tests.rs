@@ -477,7 +477,9 @@ fn open_menu_main_after_world_does_not_duplicate_root_menu() {
 
 #[test]
 fn simulation_time_uses_floor_tick_conversion() {
-    let runtime = flux_sim::SimRuntime::new(Duration::from_millis(16)).expect("runtime");
+    let runtime =
+        flux_sim::SimRuntime::new(Duration::from_millis(16), flux_sim::BackendPolicy::CpuOnly)
+            .expect("runtime");
     assert_eq!(simulation_ticks_for_delay(&runtime, 1000), 62);
     assert_eq!(simulation_ticks_for_delay(&runtime, 15), 0);
     assert_eq!(simulation_ticks_for_delay(&runtime, 16), 1);

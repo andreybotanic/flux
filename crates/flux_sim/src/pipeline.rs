@@ -1,4 +1,4 @@
-use flux_world::WorldGrid;
+use flux_world::{GasPrototypeId, WorldGrid};
 
 use crate::gas_diffusion::GasSimulationStage;
 use crate::{BackendPolicy, SimError, SimulationStage};
@@ -21,11 +21,11 @@ impl SimulationPipeline {
         }
     }
 
-    pub fn new_default() -> Result<Self, SimError> {
+    pub fn new_default(backend_policy: BackendPolicy) -> Result<Self, SimError> {
         let mut pipeline = Self::new();
         pipeline.register_stage(SimulationStage::Gas(GasSimulationStage::new(
             1,
-            BackendPolicy::CpuOnly,
+            backend_policy,
         )?))?;
         Ok(pipeline)
     }
@@ -54,6 +54,14 @@ impl SimulationPipeline {
             registration.stage.execute(tick, world)?;
         }
         Ok(())
+    }
+
+    pub fn set_gas_prototypes(&self, gas_prototypes: Vec<GasPrototypeId>) {
+        for registration in &self.stage_registry {
+            registration
+                .stage
+                .set_gas_prototypes(gas_prototypes.clone());
+        }
     }
 }
 
@@ -135,7 +143,8 @@ mod tests {
 
     #[test]
     fn default_runtime_pipeline_registers_and_runs_gas_stage() {
-        let mut runtime = SimRuntime::new(Duration::from_millis(16)).expect("runtime");
+        let mut runtime =
+            SimRuntime::new(Duration::from_millis(16), BackendPolicy::CpuOnly).expect("runtime");
         runtime
             .enqueue_command(crate::SimCommand::CreateWorld {
                 width: 3,

@@ -6,7 +6,8 @@ use flux_world::{
 };
 
 use crate::{
-    CommandQueue, EventQueue, FixedTick, SimCommand, SimError, SimEvent, SimulationPipeline,
+    BackendPolicy, CommandQueue, EventQueue, FixedTick, SimCommand, SimError, SimEvent,
+    SimulationPipeline,
 };
 
 pub struct SimRuntime {
@@ -21,14 +22,14 @@ pub struct SimRuntime {
 }
 
 impl SimRuntime {
-    pub fn new(fixed_step: Duration) -> Result<Self, SimError> {
+    pub fn new(fixed_step: Duration, backend_policy: BackendPolicy) -> Result<Self, SimError> {
         Ok(Self {
             fixed_tick: FixedTick::new(fixed_step)?,
             initialized: false,
             tick_counter: 0,
             world: None,
             world_seed: None,
-            pipeline: SimulationPipeline::new_default()?,
+            pipeline: SimulationPipeline::new_default(backend_policy)?,
             commands: CommandQueue::new(),
             events: EventQueue::new(),
         })
@@ -114,6 +115,10 @@ impl SimRuntime {
                 operation: "set_gas_particles_at",
                 source,
             })
+    }
+
+    pub fn set_gas_prototypes(&mut self, gas_prototypes: Vec<GasPrototypeId>) {
+        self.pipeline.set_gas_prototypes(gas_prototypes);
     }
 
     pub fn place_structure(
@@ -220,10 +225,11 @@ mod tests {
         GasPrototypeId, GridSize, ParticleCount, SolidCellPrototypeId, TilePos, WorldGrid,
     };
 
-    use crate::{SimCommand, SimError, SimEvent, SimRuntime};
+    use crate::{BackendPolicy, SimCommand, SimError, SimEvent, SimRuntime};
 
     fn runtime() -> SimRuntime {
-        SimRuntime::new(Duration::from_millis(16)).expect("runtime should be created")
+        SimRuntime::new(Duration::from_millis(16), BackendPolicy::CpuOnly)
+            .expect("runtime should be created")
     }
 
     #[test]
@@ -439,5 +445,11 @@ mod tests {
                 operation: "set_solid_cell_at",
             }
         );
+    }
+
+    #[test]
+    fn set_gas_prototypes_is_allowed_without_world() {
+        let mut runtime = runtime();
+        runtime.set_gas_prototypes(vec![GasPrototypeId::parse("base:gas/oxygen").expect("id")]);
     }
 }

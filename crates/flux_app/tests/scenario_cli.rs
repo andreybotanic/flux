@@ -29,3 +29,23 @@ fn run_scenario_reports_missing_id_and_non_zero_exit() {
         "stderr should mention missing scenario id, got: {stderr}"
     );
 }
+
+#[test]
+fn invalid_backend_policy_exits_with_cli_error() {
+    let output = Command::new(env!("CARGO_BIN_EXE_flux_app"))
+        .args(["--backend-policy", "invalid"])
+        .current_dir(workspace_root())
+        .output()
+        .expect("flux_app command should run");
+
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit code for invalid backend policy"
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be valid utf-8");
+    assert!(
+        stderr.contains("invalid value for --backend-policy"),
+        "stderr should mention invalid backend policy, got: {stderr}"
+    );
+}

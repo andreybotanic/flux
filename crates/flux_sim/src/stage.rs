@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use flux_world::{GasLayer, GridSize, WorldGrid};
+use flux_world::{GasLayer, GasPrototypeId, GridSize, WorldGrid};
 
 use crate::SimError;
 use crate::gas_diffusion::GasSimulationStage;
@@ -8,6 +8,7 @@ use crate::gas_diffusion::GasSimulationStage;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SimulationBackendId {
     Cpu,
+    Gpu,
 }
 
 impl SimulationBackendId {
@@ -15,6 +16,7 @@ impl SimulationBackendId {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Cpu => "cpu",
+            Self::Gpu => "gpu",
         }
     }
 }
@@ -28,20 +30,41 @@ impl Display for SimulationBackendId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendPolicy {
     CpuOnly,
+    PreferGpu { cpu_fallback: bool },
 }
 
 impl BackendPolicy {
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
+    pub const fn as_cli_value(self) -> &'static str {
         match self {
             Self::CpuOnly => "cpu_only",
+            Self::PreferGpu { cpu_fallback: true } => "prefer_gpu",
+            Self::PreferGpu {
+                cpu_fallback: false,
+            } => "prefer_gpu_strict",
         }
+    }
+
+    pub fn parse_cli_value(value: &str) -> Option<Self> {
+        match value {
+            "cpu_only" => Some(Self::CpuOnly),
+            "prefer_gpu" => Some(Self::PreferGpu { cpu_fallback: true }),
+            "prefer_gpu_strict" => Some(Self::PreferGpu {
+                cpu_fallback: false,
+            }),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn supported_cli_values() -> &'static [&'static str] {
+        &["cpu_only", "prefer_gpu", "prefer_gpu_strict"]
     }
 }
 
 impl Display for BackendPolicy {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str(self.as_cli_value())
     }
 }
 
@@ -75,7 +98,7 @@ impl SimulationStageConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GasStageWorldView {
     pub size: GridSize,
 }
@@ -114,5 +137,39 @@ impl SimulationStage {
         match self {
             Self::Gas(stage) => stage.execute(tick, world),
         }
+    }
+
+    pub fn set_gas_prototypes(&self, gas_prototypes: Vec<GasPrototypeId>) {
+        match self {
+            Self::Gas(stage) => stage.set_gas_prototypes(gas_prototypes),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BackendPolicy;
+
+    #[test]
+    fn backend_policy_cli_aliases_roundtrip() {
+        assert_eq!(
+            BackendPolicy::parse_cli_value("cpu_only"),
+            Some(BackendPolicy::CpuOnly)
+        );
+        assert_eq!(
+            BackendPolicy::parse_cli_value("prefer_gpu"),
+            Some(BackendPolicy::PreferGpu { cpu_fallback: true })
+        );
+        assert_eq!(
+            BackendPolicy::parse_cli_value("prefer_gpu_strict"),
+            Some(BackendPolicy::PreferGpu {
+                cpu_fallback: false
+            })
+        );
+        assert_eq!(
+            BackendPolicy::parse_cli_value("invalid"),
+            None,
+            "unknown aliases must be rejected"
+        );
     }
 }

@@ -47,11 +47,39 @@ pub enum SimError {
     DuplicateStageRegistration { stage_name: &'static str },
 
     #[error(
-        "cannot resolve backend for stage `{stage_name}` with policy `{backend_policy}` in S14"
+        "backend fallback is disabled for stage `{stage_name}` with policy `{backend_policy}`: {reason}"
     )]
-    BackendResolutionFailed {
+    BackendFallbackDisabled {
         stage_name: &'static str,
         backend_policy: BackendPolicy,
+        reason: String,
+    },
+
+    #[error("gpu adapter is unavailable for stage `{stage_name}`")]
+    GpuAdapterUnavailable { stage_name: &'static str },
+
+    #[error("gpu backend is not implemented for stage `{stage_name}`")]
+    StageGpuBackendUnavailable { stage_name: &'static str },
+
+    #[error("failed to request gpu device for stage `{stage_name}`: {reason}")]
+    GpuDeviceRequestFailed {
+        stage_name: &'static str,
+        reason: String,
+    },
+
+    #[error("gpu execution failed for stage `{stage_name}`: {reason}")]
+    GpuExecutionFailed {
+        stage_name: &'static str,
+        reason: String,
+    },
+
+    #[error(
+        "gpu backend cannot represent gas particles for stage `{stage_name}`: gas=`{gas}`, particles={particles} exceed u32"
+    )]
+    GpuParticleCountOverflow {
+        stage_name: &'static str,
+        gas: String,
+        particles: u64,
     },
 
     #[error("gas permeability mask size mismatch: expected={expected}, actual={actual}")]

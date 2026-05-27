@@ -18,6 +18,7 @@ use flux_scenario::{
     LoadedScenario, OpenMenuStep, PauseSimulationStep, SaveGameStep, ScenarioDefinition,
     ScenarioStep, TakeScreenshotStep, WaitRealtimeStep, WaitSimulationTimeStep, WaitTicksStep,
 };
+use flux_sim::BackendPolicy;
 use flux_sim::SimCommand;
 use flux_ui::{
     BindingAction, BuiltinUiActionDispatcher, UiMenuDefinition, UiWidgetId, WidgetKind, WidgetNode,
@@ -28,13 +29,15 @@ use super::validation::{
     ScenarioValidationState, simulation_ticks_for_delay, validate_scenario_steps,
 };
 use crate::{
-    FluxScreenMode, FluxSimState, FluxUiState, FluxWorldDebugContent, setup_flux_ui_runtime,
-    setup_primary_ui_camera, setup_sim_runtime, windowed_diagnostics, world_debug,
+    FluxBackendPolicy, FluxScreenMode, FluxSimState, FluxUiState, FluxWorldDebugContent,
+    setup_flux_ui_runtime, setup_primary_ui_camera, setup_sim_runtime, windowed_diagnostics,
+    world_debug,
 };
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ScenarioRunConfig {
     pub visual_delay_ms: u64,
+    pub backend_policy: BackendPolicy,
 }
 
 #[derive(Resource)]
@@ -106,6 +109,7 @@ pub(crate) fn run_scenario_windowed(scenario: &LoadedScenario, config: ScenarioR
             }),
     );
     app.add_plugins(FluxRenderPlugin);
+    app.insert_resource(FluxBackendPolicy(config.backend_policy));
     app.insert_resource(ScenarioBootstrapConfig {
         scenario: scenario.clone(),
         config,
@@ -115,8 +119,8 @@ pub(crate) fn run_scenario_windowed(scenario: &LoadedScenario, config: ScenarioR
         (
             windowed_diagnostics,
             setup_primary_ui_camera,
-            setup_sim_runtime,
             setup_flux_ui_runtime,
+            setup_sim_runtime,
             setup_scenario_runtime_state,
         )
             .chain(),
@@ -193,6 +197,13 @@ fn setup_scenario_runtime_state(
         state.pending_exit = Some(AppExit::error());
     } else {
         push_diag(&mut state, "scenario validation passed".to_owned());
+        push_diag(
+            &mut state,
+            format!(
+                "simulation backend policy: {}",
+                bootstrap.config.backend_policy
+            ),
+        );
     }
 
     commands.insert_resource(state);

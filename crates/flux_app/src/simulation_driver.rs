@@ -83,13 +83,14 @@ fn step_runtime_if_needed(
 mod tests {
     use std::time::Duration;
 
-    use flux_sim::{SimCommand, SimRuntime};
+    use flux_sim::{BackendPolicy, SimCommand, SimRuntime};
 
     use super::{should_step_world_simulation, step_runtime_if_needed};
     use crate::{FluxScreenMode, FluxSimState};
 
     fn create_world_sim_state() -> FluxSimState {
-        let mut runtime = SimRuntime::new(Duration::from_millis(16)).expect("runtime");
+        let mut runtime =
+            SimRuntime::new(Duration::from_millis(16), BackendPolicy::CpuOnly).expect("runtime");
         runtime
             .enqueue_command(SimCommand::CreateWorld {
                 width: 8,
