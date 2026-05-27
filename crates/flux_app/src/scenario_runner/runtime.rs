@@ -1,10 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use bevy::app::AppExit;
-use bevy::log::tracing_subscriber::prelude::*;
 use bevy::log::{LogPlugin, info};
 use bevy::prelude::{
     App, Commands, IntoScheduleConfigs, MessageWriter, PluginGroup, Res, ResMut, Resource,
@@ -85,14 +84,14 @@ pub(crate) fn run_scenario_windowed(scenario: &LoadedScenario, config: ScenarioR
             diagnostic_log_path.display()
         );
     }
-    initialize_scenario_logger(&diagnostic_log_path);
-
     let mut app = App::new();
     app.add_message::<crate::UiButtonPressed>();
     app.add_plugins(
         bevy::prelude::DefaultPlugins
-            .build()
-            .disable::<LogPlugin>()
+            .set(LogPlugin {
+                filter: "info,wgpu=warn,naga=warn".to_owned(),
+                ..Default::default()
+            })
             .set(AssetPlugin {
                 file_path: asset_root,
                 ..Default::default()
@@ -858,7 +857,13 @@ fn find_widget_in_tree<'a>(node: &'a WidgetNode, id: &UiWidgetId) -> Option<&'a 
     None
 }
 
-fn push_diag(_state: &mut ScenarioRuntimeState, line: String) {
+fn push_diag(state: &mut ScenarioRuntimeState, line: String) {
+    if let Err(error) = append_diagnostic_line(&state.artifact_dir.join("diagnostic.log"), &line) {
+        eprintln!(
+            "scenario runtime warning: cannot append diagnostic log `{}`: {error}",
+            state.artifact_dir.join("diagnostic.log").display()
+        );
+    }
     info!(target: "flux_app::scenario_runner::runtime", "{line}");
 }
 
@@ -872,32 +877,10 @@ fn push_runtime_failure(
     state.pending_exit = Some(AppExit::error());
 }
 
-fn initialize_scenario_logger(diagnostic_log_path: &PathBuf) {
-    let file = fs::OpenOptions::new()
+fn append_diagnostic_line(path: &Path, line: &str) -> std::io::Result<()> {
+    let mut file = fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(diagnostic_log_path)
-        .unwrap_or_else(|error| {
-            panic!(
-                "scenario startup failed: cannot open diagnostic log `{}`: {error}",
-                diagnostic_log_path.display()
-            )
-        });
-    let filter = bevy::log::tracing_subscriber::filter::FilterFn::new(|meta| {
-        meta.target().starts_with("flux_app::scenario_runner")
-    });
-    let file_layer = bevy::log::tracing_subscriber::fmt::layer()
-        .with_ansi(false)
-        .with_writer(Mutex::new(file))
-        .with_filter(filter);
-    let stderr_layer = bevy::log::tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
-    let filter_layer = bevy::log::tracing_subscriber::filter::EnvFilter::builder()
-        .parse_lossy("info,wgpu=warn,naga=warn");
-    let subscriber = bevy::log::tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(stderr_layer)
-        .with(file_layer);
-    bevy::log::tracing::subscriber::set_global_default(subscriber).unwrap_or_else(|error| {
-        panic!("scenario startup failed: cannot initialize tracing subscriber: {error}")
-    });
+        .open(path)?;
+    writeln!(file, "{line}")
 }

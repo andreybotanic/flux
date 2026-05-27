@@ -294,8 +294,6 @@ fn save_load_scenarios_produce_expected_logs_and_semantic_screenshots() {
     let saves_dir = root.join("saves");
     let load_artifacts_dir = scenario_artifact_dir("test_scenarios:scenario/save_load_slots");
 
-    let _ = fs::remove_dir_all(saves_dir.join("slot_a"));
-    let _ = fs::remove_dir_all(saves_dir.join("slot_b"));
     let _ = fs::remove_dir_all(load_artifacts_dir);
     let registry = load_registry_for_save_layer_decode();
     generate_slot_saves(&saves_dir, &registry);
