@@ -138,6 +138,15 @@ impl GasLayer {
     }
 
     #[must_use]
+    pub fn snapshot(&self) -> Vec<GasMixture> {
+        self.cells.clone()
+    }
+
+    pub fn replace_all(&mut self, cells: Vec<GasMixture>) {
+        self.cells = cells;
+    }
+
+    #[must_use]
     pub fn len(&self) -> usize {
         self.cells.len()
     }
@@ -244,5 +253,28 @@ mod tests {
         mixture.set_particles(hydrogen, ParticleCount(3));
         mixture.clear_all();
         assert!(mixture.components().is_empty());
+    }
+
+    #[test]
+    fn layer_snapshot_and_replace_all_roundtrip() {
+        let oxygen = gas_id("base:gas/oxygen");
+        let mut layer = GasLayer::new(2);
+        layer
+            .get_mut(1)
+            .expect("cell exists")
+            .set_particles(oxygen.clone(), ParticleCount(11));
+
+        let mut snapshot = layer.snapshot();
+        snapshot[0].set_particles(oxygen, ParticleCount(5));
+        layer.replace_all(snapshot);
+
+        assert_eq!(
+            layer.get(0).expect("cell exists").total_particles(),
+            ParticleCount(5)
+        );
+        assert_eq!(
+            layer.get(1).expect("cell exists").total_particles(),
+            ParticleCount(11)
+        );
     }
 }

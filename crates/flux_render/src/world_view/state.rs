@@ -94,6 +94,11 @@ impl WorldRenderState {
         self.grid_dirty = true;
     }
 
+    pub fn update_world_snapshot(&mut self, snapshot: WorldRenderSnapshot) {
+        self.snapshot = snapshot;
+        self.sprites_dirty = true;
+    }
+
     pub fn request_camera_pivot(&mut self, x: u32, y: u32) {
         self.pending_camera_pivot = Some((x, y));
     }
@@ -148,5 +153,25 @@ pub(crate) struct WorldRenderStatePlugin;
 impl Plugin for WorldRenderStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WorldRenderState>();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorldRenderSnapshot, WorldRenderState};
+    use flux_world::GridSize;
+
+    #[test]
+    fn updating_snapshot_does_not_request_camera_reset() {
+        let mut state = WorldRenderState::default();
+        state.show_world(GridSize::new(8, 8), 1.0, WorldRenderSnapshot::default());
+        state.clear_reset_camera_request();
+        state.mark_sprites_clean();
+
+        state.update_world_snapshot(WorldRenderSnapshot::default());
+
+        assert!(!state.reset_camera_requested());
+        assert!(state.sprites_dirty());
+        assert!(!state.grid_dirty());
     }
 }

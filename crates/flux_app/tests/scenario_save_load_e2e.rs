@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 
 use flux_content::{
     AssetPath, LocalizationKey, PrototypeSource, SingleSpriteVisual, StructurePrototype, TileSize,
@@ -8,6 +9,8 @@ use flux_content::{
 };
 use flux_save::{load_game, save_game};
 use flux_world::{GridSize, ParticleCount, TilePos, WorldGrid};
+
+static SAVE_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -264,6 +267,19 @@ fn generate_slot_saves(saves_dir: &Path, registry: &flux_content::ContentRegistr
     save_game(saves_dir, "slot_b", &slot_b_world, 99, 4).expect("save slot_b");
 }
 
+fn generate_diffusion_slot_saves(saves_dir: &Path) {
+    fn id(value: &str) -> flux_core::PrototypeId {
+        flux_core::PrototypeId::parse(value).expect("valid id")
+    }
+
+    let oxygen = id("base:gas/oxygen");
+    let mut slot_a_world = WorldGrid::new(GridSize::new(3, 1)).expect("slot_a world");
+    slot_a_world
+        .set_gas_particles(TilePos::new(1, 0), oxygen, ParticleCount(120))
+        .expect("set gas");
+    save_game(saves_dir, "slot_a", &slot_a_world, 42, 0).expect("save slot_a");
+}
+
 fn count_world_layers(world: &flux_world::WorldGrid) -> (usize, usize, usize) {
     let size = world.size();
     let mut solids = 0usize;
@@ -290,6 +306,7 @@ fn count_world_layers(world: &flux_world::WorldGrid) -> (usize, usize, usize) {
 
 #[test]
 fn save_load_scenarios_produce_expected_logs_and_semantic_screenshots() {
+    let _guard = SAVE_TEST_MUTEX.lock().expect("save mutex");
     let root = workspace_root();
     let saves_dir = root.join("saves");
     let load_artifacts_dir = scenario_artifact_dir("test_scenarios:scenario/save_load_slots");
@@ -380,4 +397,92 @@ fn save_load_scenarios_produce_expected_logs_and_semantic_screenshots() {
         menu_blue_after_b > 2_000,
         "expected visible menu buttons after loading slot_b, blue pixels={menu_blue_after_b}"
     );
+}
+
+#[test]
+fn gas_diffusion_scenarios_roundtrip_slot_values() {
+    let _guard = SAVE_TEST_MUTEX.lock().expect("save mutex");
+    let root = workspace_root();
+    let saves_dir = root.join("saves");
+    let scenario_a = "test_scenarios:scenario/gas_diffusion_slot_a_to_b";
+    let scenario_b = "test_scenarios:scenario/gas_diffusion_slot_b_verify";
+    let scenario_a_artifacts = scenario_artifact_dir(scenario_a);
+    let scenario_b_artifacts = scenario_artifact_dir(scenario_b);
+
+    let _ = fs::remove_dir_all(&scenario_a_artifacts);
+    let _ = fs::remove_dir_all(&scenario_b_artifacts);
+    let _ = fs::remove_dir_all(saves_dir.join("slot_a"));
+    let _ = fs::remove_dir_all(saves_dir.join("slot_b"));
+
+    let registry = load_registry_for_save_layer_decode();
+    generate_diffusion_slot_saves(&saves_dir);
+    run_flux_app(&["--run-scenario", scenario_a]);
+    run_flux_app(&["--run-scenario", scenario_b]);
+
+    assert_substrings_in_order(
+        &read_log_lines(scenario_a),
+        &[
+            "scenario validation passed",
+            "gas diffusion slot_a->slot_b started",
+            "step_index=2 step=AssertGasParticlesEq status=ok",
+            "step_index=4 step=WaitTicks status=ok",
+            "step_index=7 step=AssertGasParticlesEq status=ok",
+            "step_index=10 step=SaveGame status=ok",
+            "gas diffusion slot_a->slot_b finished",
+            "scenario finished: steps=12 final_tick=1",
+        ],
+    );
+    assert_substrings_in_order(
+        &read_log_lines(scenario_b),
+        &[
+            "scenario validation passed",
+            "gas diffusion slot_b verify started",
+            "step_index=3 step=AssertGasParticlesEq status=ok",
+            "step_index=6 step=AssertGasParticlesEq status=ok",
+            "gas diffusion slot_b verify finished",
+            "scenario finished: steps=8 final_tick=1",
+        ],
+    );
+
+    let slot_a = load_game(&saves_dir, "slot_a", &registry).expect("slot_a should load");
+    let slot_b = load_game(&saves_dir, "slot_b", &registry).expect("slot_b should load");
+    let oxygen = flux_core::PrototypeId::parse("base:gas/oxygen").expect("gas id");
+    assert_eq!(slot_a.tick, 0);
+    assert_eq!(
+        slot_a
+            .world
+            .gas_at(TilePos::new(1, 0))
+            .expect("cell")
+            .particles_of(&oxygen)
+            .0,
+        120
+    );
+    assert_eq!(
+        slot_b
+            .world
+            .gas_at(TilePos::new(0, 0))
+            .expect("cell")
+            .particles_of(&oxygen)
+            .0,
+        30
+    );
+    assert_eq!(
+        slot_b
+            .world
+            .gas_at(TilePos::new(1, 0))
+            .expect("cell")
+            .particles_of(&oxygen)
+            .0,
+        60
+    );
+    assert_eq!(
+        slot_b
+            .world
+            .gas_at(TilePos::new(2, 0))
+            .expect("cell")
+            .particles_of(&oxygen)
+            .0,
+        30
+    );
+    assert_eq!(slot_b.tick, 1);
 }

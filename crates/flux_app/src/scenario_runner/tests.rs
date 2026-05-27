@@ -15,9 +15,9 @@ use super::validation::{
     validate_scenario_steps,
 };
 use flux_scenario::{
-    AssertUiExistsStep, ClickStep, LoadGameStep, OpenMenuStep, PauseSimulationStep, SaveGameStep,
-    ScenarioDefinition, ScenarioStep, TakeScreenshotStep, WaitRealtimeStep, WaitSimulationTimeStep,
-    WaitTicksStep,
+    AssertGasParticlesCheckStep, AssertUiExistsStep, ClickStep, LoadGameStep, OpenMenuStep,
+    PauseSimulationStep, SaveGameStep, ScenarioCellRef, ScenarioDefinition, ScenarioStep,
+    TakeScreenshotStep, WaitRealtimeStep, WaitSimulationTimeStep, WaitTicksStep,
 };
 use flux_ui::TextWidget;
 
@@ -163,11 +163,41 @@ fn rejects_wait_ticks_without_loaded_world() {
 }
 
 #[test]
+fn rejects_gas_assert_without_loaded_world() {
+    let error = validate_single_step(ScenarioStep::AssertGasParticlesEqStep(
+        AssertGasParticlesCheckStep {
+            gas: None,
+            cell: None,
+            value: 0,
+        },
+    ));
+    assert_eq!(error.step_kind, "AssertGasParticlesEq");
+}
+
+#[test]
 fn rejects_wait_simulation_time_without_loaded_world() {
     let error = validate_single_step(ScenarioStep::WaitSimulationTimeStep(
         WaitSimulationTimeStep { delay_ms: 1000 },
     ));
     assert_eq!(error.step_kind, "WaitSimulationTime");
+}
+
+#[test]
+fn load_game_enables_gas_assert_steps() {
+    let registry = build_registry();
+    let mut state = validation_state(&registry);
+    let scenario = ScenarioDefinition {
+        id: PrototypeId::parse("test_scenarios:scenario/load_then_gas_assert").expect("id"),
+        steps: vec![
+            ScenarioStep::LoadGameStep(LoadGameStep("slot_a".to_owned())),
+            ScenarioStep::AssertGasParticlesGreaterOrEqStep(AssertGasParticlesCheckStep {
+                gas: None,
+                cell: Some(ScenarioCellRef { x: 0, y: 0 }),
+                value: 0,
+            }),
+        ],
+    };
+    validate_scenario_steps(&scenario, &registry, &mut state).expect("scenario must validate");
 }
 
 #[test]

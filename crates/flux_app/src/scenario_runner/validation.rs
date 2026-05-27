@@ -49,6 +49,21 @@ fn validate_step(
         ScenarioStep::WaitTicksStep(_) => ensure_sim_time_allowed(step_index, step, state),
         ScenarioStep::WaitSimulationTimeStep(_) => ensure_sim_time_allowed(step_index, step, state),
         ScenarioStep::AssertTickStep(_) => Ok(()),
+        ScenarioStep::AssertGasParticlesEqStep(_)
+        | ScenarioStep::AssertGasParticlesNotEqStep(_)
+        | ScenarioStep::AssertGasParticlesLessStep(_)
+        | ScenarioStep::AssertGasParticlesLessOrEqStep(_)
+        | ScenarioStep::AssertGasParticlesGreaterStep(_)
+        | ScenarioStep::AssertGasParticlesGreaterOrEqStep(_) => {
+            if !state.world_loaded {
+                return Err(validation_error(
+                    step_index,
+                    step,
+                    "gas assert is allowed only when world is loaded",
+                ));
+            }
+            Ok(())
+        }
         ScenarioStep::WaitRealtimeStep(_) => {
             if state.sim_paused {
                 Ok(())

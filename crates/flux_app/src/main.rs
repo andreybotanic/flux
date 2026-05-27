@@ -4,6 +4,7 @@ mod helpers;
 mod input_actions;
 mod input_bindings;
 mod scenario_runner;
+mod simulation_driver;
 mod world_debug;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,6 +32,7 @@ use input_actions::{
 };
 use input_bindings::{default_input_bindings, handle_input_bindings};
 use scenario_runner::ScenarioRunConfig;
+use simulation_driver::drive_live_simulation;
 
 #[cfg(test)]
 use helpers::ScenarioLookupError;
@@ -276,6 +278,7 @@ fn run_windowed() {
         (
             sync_ui_camera_activity,
             handle_input_bindings,
+            drive_live_simulation,
             emit_ui_button_press_events,
             handle_ui_button_actions,
             rebuild_flux_ui_if_needed,
@@ -481,7 +484,7 @@ fn handle_ui_button_actions(
             &action_registry,
             &mut ui_state,
             &mut screen_mode,
-            &mut sim_state,
+            sim_state.as_mut(),
             &world_debug_content,
             &mut world_render_state,
         ) == ActionExecutionFlow::Stop

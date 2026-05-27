@@ -1,0 +1,13 @@
+Scenario(
+    id: "test_scenarios:scenario/gas_diffusion_slot_b_verify",
+    steps: [
+        Log("gas diffusion slot_b verify started"),
+        LoadGame("slot_b"),
+        AssertTick(1),
+        AssertGasParticlesEq((gas: "base:gas/oxygen", cell: (x: 0, y: 0), value: 30)),
+        AssertGasParticlesEq((gas: "base:gas/oxygen", cell: (x: 1, y: 0), value: 60)),
+        AssertGasParticlesEq((gas: "base:gas/oxygen", cell: (x: 2, y: 0), value: 30)),
+        AssertGasParticlesEq((gas: None, value: 120)),
+        Log("gas diffusion slot_b verify finished"),
+    ],
+)

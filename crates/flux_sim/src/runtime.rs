@@ -2,15 +2,18 @@ use std::time::Duration;
 
 use flux_world::{GridSize, WorldGrid};
 
-use crate::{CommandQueue, EventQueue, FixedTick, SimCommand, SimError, SimEvent};
+use crate::{
+    CommandQueue, EventQueue, FixedTick, SimCommand, SimError, SimEvent, SimulationPipeline,
+};
 
-#[derive(Debug, Clone)]
 pub struct SimRuntime {
     fixed_tick: FixedTick,
     initialized: bool,
     tick_counter: u64,
     world: Option<WorldGrid>,
     world_seed: Option<u64>,
+    gas_permeability_mask: Vec<bool>,
+    pipeline: SimulationPipeline,
     commands: CommandQueue,
     events: EventQueue,
 }
@@ -23,6 +26,8 @@ impl SimRuntime {
             tick_counter: 0,
             world: None,
             world_seed: None,
+            gas_permeability_mask: Vec::new(),
+            pipeline: SimulationPipeline::new_default()?,
             commands: CommandQueue::new(),
             events: EventQueue::new(),
         })
@@ -80,10 +85,18 @@ impl SimRuntime {
     }
 
     pub fn load_world_state(&mut self, world: WorldGrid, seed: u64, tick: u64) {
+        self.gas_permeability_mask = world.build_gas_permeability_mask();
         self.world = Some(world);
         self.world_seed = Some(seed);
         self.tick_counter = tick;
         self.initialized = true;
+    }
+
+    pub fn rebuild_gas_permeability_mask(&mut self) {
+        self.gas_permeability_mask = self
+            .world
+            .as_ref()
+            .map_or_else(Vec::new, WorldGrid::build_gas_permeability_mask);
     }
 
     fn process_queued_commands(&mut self) -> Result<(), SimError> {
@@ -93,12 +106,12 @@ impl SimRuntime {
         Ok(())
     }
 
-    /// Executes one simulation step for one fixed tick.
-    ///
-    /// S08 keeps this as a no-op simulation body, but the method is explicit
-    /// so later stages can attach real simulation work to the fixed tick loop.
     pub fn step(&mut self) -> Result<(), SimError> {
         self.add_ticks(1)?;
+        if let Some(world) = self.world.as_mut() {
+            self.pipeline
+                .execute_tick(self.tick_counter, world, &self.gas_permeability_mask)?;
+        }
         Ok(())
     }
 
@@ -124,6 +137,7 @@ impl SimRuntime {
             height,
             source,
         })?;
+        self.gas_permeability_mask = world.build_gas_permeability_mask();
         self.world = Some(world);
         self.world_seed = Some(seed);
         self.events.enqueue(SimEvent::WorldCreated {
@@ -157,7 +171,7 @@ impl SimRuntime {
 mod tests {
     use std::time::Duration;
 
-    use flux_world::{GridSize, WorldGrid};
+    use flux_world::{GasPrototypeId, GridSize, ParticleCount, TilePos, WorldGrid};
 
     use crate::{SimCommand, SimError, SimEvent, SimRuntime};
 
@@ -303,5 +317,35 @@ mod tests {
         assert_eq!(runtime.tick_counter(), 321);
         assert_eq!(runtime.world().expect("world").size(), GridSize::new(4, 5));
         assert!(runtime.is_initialized());
+    }
+
+    #[test]
+    fn gas_diffusion_runs_inside_step() {
+        let mut runtime = runtime();
+        runtime
+            .enqueue_command(SimCommand::CreateWorld {
+                width: 3,
+                height: 1,
+                seed: 1,
+            })
+            .expect("enqueue");
+        runtime.initialize().expect("init");
+        let oxygen = GasPrototypeId::parse("base:gas/oxygen").expect("id");
+        runtime
+            .world_mut()
+            .expect("world")
+            .set_gas_particles(TilePos::new(1, 0), oxygen.clone(), ParticleCount(120))
+            .expect("seed gas");
+
+        runtime.step().expect("step");
+
+        let left = runtime
+            .world()
+            .expect("world")
+            .gas_at(TilePos::new(0, 0))
+            .expect("cell")
+            .particles_of(&oxygen)
+            .0;
+        assert!(left > 0, "expected diffusion to move gas to left neighbor");
     }
 }

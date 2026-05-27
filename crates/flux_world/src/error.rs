@@ -17,6 +17,9 @@ pub enum WorldGridError {
         width: u32,
         height: u32,
     },
+
+    #[error("gas layer cell count mismatch: expected={expected}, actual={actual}")]
+    GasLayerSizeMismatch { expected: usize, actual: usize },
 }
 
 impl WorldGridError {

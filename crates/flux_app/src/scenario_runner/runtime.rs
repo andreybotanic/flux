@@ -14,9 +14,9 @@ use bevy::{asset::AssetPlugin, prelude::Update, render::RenderPlugin, window::Wi
 use flux_render::{FluxRenderPlugin, WorldRenderState};
 use flux_save::{load_game, save_game};
 use flux_scenario::{
-    AssertUiExistsStep, ClickStep, CreateWorldStep, LoadGameStep, LoadedScenario, OpenMenuStep,
-    PauseSimulationStep, SaveGameStep, ScenarioDefinition, ScenarioStep, TakeScreenshotStep,
-    WaitRealtimeStep, WaitSimulationTimeStep, WaitTicksStep,
+    AssertGasParticlesCheckStep, AssertUiExistsStep, ClickStep, CreateWorldStep, LoadGameStep,
+    LoadedScenario, OpenMenuStep, PauseSimulationStep, SaveGameStep, ScenarioDefinition,
+    ScenarioStep, TakeScreenshotStep, WaitRealtimeStep, WaitSimulationTimeStep, WaitTicksStep,
 };
 use flux_sim::SimCommand;
 use flux_ui::{
@@ -318,7 +318,7 @@ fn drive_scenario_runtime(
         &step,
         &mut ui_state,
         &mut screen_mode,
-        &mut sim_state,
+        sim_state.as_mut(),
         &world_debug_content,
         &mut world_render_state,
         now,
@@ -415,6 +415,30 @@ fn execute_step(
             world_render_state.request_camera_zoom(step.zoom);
             Ok(())
         }
+        ScenarioStep::AssertGasParticlesEqStep(step) => {
+            assert_gas_particles(runtime_state, sim_state, step, GasAssertComparison::Eq)
+        }
+        ScenarioStep::AssertGasParticlesNotEqStep(step) => {
+            assert_gas_particles(runtime_state, sim_state, step, GasAssertComparison::NotEq)
+        }
+        ScenarioStep::AssertGasParticlesLessStep(step) => {
+            assert_gas_particles(runtime_state, sim_state, step, GasAssertComparison::Less)
+        }
+        ScenarioStep::AssertGasParticlesLessOrEqStep(step) => assert_gas_particles(
+            runtime_state,
+            sim_state,
+            step,
+            GasAssertComparison::LessOrEq,
+        ),
+        ScenarioStep::AssertGasParticlesGreaterStep(step) => {
+            assert_gas_particles(runtime_state, sim_state, step, GasAssertComparison::Greater)
+        }
+        ScenarioStep::AssertGasParticlesGreaterOrEqStep(step) => assert_gas_particles(
+            runtime_state,
+            sim_state,
+            step,
+            GasAssertComparison::GreaterOrEq,
+        ),
     }
 }
 
@@ -549,6 +573,109 @@ fn assert_tick(
         "assert tick failed expected={} actual={actual}",
         step.0
     ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GasAssertComparison {
+    Eq,
+    NotEq,
+    Less,
+    LessOrEq,
+    Greater,
+    GreaterOrEq,
+}
+
+fn assert_gas_particles(
+    runtime_state: &ScenarioRuntimeState,
+    sim_state: &FluxSimState,
+    step: &AssertGasParticlesCheckStep,
+    comparison: GasAssertComparison,
+) -> Result<(), String> {
+    if !runtime_state.world_loaded {
+        return Err("gas assert requires loaded world".to_owned());
+    }
+    let Some(world) = sim_state.runtime.world() else {
+        return Err("gas assert failed: world is missing while world_loaded=true".to_owned());
+    };
+    let actual = if let Some(cell) = step.cell.as_ref() {
+        let pos = flux_world::TilePos::new(cell.x, cell.y);
+        if !world.size().contains(pos) {
+            return Err(format!(
+                "gas assert cell out of bounds: ({},{}) for world {}x{}",
+                cell.x,
+                cell.y,
+                world.size().width,
+                world.size().height
+            ));
+        }
+        gas_particles_in_cell(world, step.gas.as_ref(), pos)
+    } else {
+        gas_particles_in_world(world, step.gas.as_ref())
+    };
+    let expected = step.value;
+    let passed = match comparison {
+        GasAssertComparison::Eq => actual == expected,
+        GasAssertComparison::NotEq => actual != expected,
+        GasAssertComparison::Less => actual < expected,
+        GasAssertComparison::LessOrEq => actual <= expected,
+        GasAssertComparison::Greater => actual > expected,
+        GasAssertComparison::GreaterOrEq => actual >= expected,
+    };
+    if passed {
+        return Ok(());
+    }
+    Err(format!(
+        "gas assert failed: op={} gas={} scope={} expected={} actual={actual}",
+        gas_compare_label(comparison),
+        step.gas
+            .as_ref()
+            .map_or_else(|| "Null".to_owned(), ToString::to_string),
+        step.cell.as_ref().map_or_else(
+            || "world".to_owned(),
+            |cell| format!("cell({}, {})", cell.x, cell.y)
+        ),
+        expected
+    ))
+}
+
+fn gas_particles_in_world(
+    world: &flux_world::WorldGrid,
+    gas: Option<&flux_world::GasPrototypeId>,
+) -> u64 {
+    let size = world.size();
+    let mut total = 0u64;
+    for y in 0..size.height {
+        for x in 0..size.width {
+            let pos = flux_world::TilePos::new(x, y);
+            total = total.saturating_add(gas_particles_in_cell(world, gas, pos));
+        }
+    }
+    total
+}
+
+fn gas_particles_in_cell(
+    world: &flux_world::WorldGrid,
+    gas: Option<&flux_world::GasPrototypeId>,
+    pos: flux_world::TilePos,
+) -> u64 {
+    let Some(mixture) = world.gas_at(pos) else {
+        return 0;
+    };
+    match gas {
+        Some(gas_id) => mixture.particles_of(gas_id).0,
+        None => mixture.total_particles().0,
+    }
+}
+
+fn gas_compare_label(comparison: GasAssertComparison) -> &'static str {
+    match comparison {
+        GasAssertComparison::Eq => "eq",
+        GasAssertComparison::NotEq => "not_eq",
+        GasAssertComparison::Less => "less",
+        GasAssertComparison::LessOrEq => "less_or_eq",
+        GasAssertComparison::Greater => "greater",
+        GasAssertComparison::GreaterOrEq => "greater_or_eq",
+    }
 }
 
 fn open_menu(

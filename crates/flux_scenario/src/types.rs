@@ -42,6 +42,18 @@ pub enum ScenarioStep {
     SetCameraPivotStep(SetCameraPivotStep),
     #[serde(rename = "SetCameraZoom")]
     SetCameraZoomStep(SetCameraZoomStep),
+    #[serde(rename = "AssertGasParticlesEq")]
+    AssertGasParticlesEqStep(AssertGasParticlesCheckStep),
+    #[serde(rename = "AssertGasParticlesNotEq")]
+    AssertGasParticlesNotEqStep(AssertGasParticlesCheckStep),
+    #[serde(rename = "AssertGasParticlesLess")]
+    AssertGasParticlesLessStep(AssertGasParticlesCheckStep),
+    #[serde(rename = "AssertGasParticlesLessOrEq")]
+    AssertGasParticlesLessOrEqStep(AssertGasParticlesCheckStep),
+    #[serde(rename = "AssertGasParticlesGreater")]
+    AssertGasParticlesGreaterStep(AssertGasParticlesCheckStep),
+    #[serde(rename = "AssertGasParticlesGreaterOrEq")]
+    AssertGasParticlesGreaterOrEqStep(AssertGasParticlesCheckStep),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -124,6 +136,76 @@ pub struct SetCameraZoomStep {
     pub zoom: f32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(from = "AssertGasParticlesCheckStepRepr")]
+pub struct AssertGasParticlesCheckStep {
+    pub gas: Option<PrototypeId>,
+    pub cell: Option<ScenarioCellRef>,
+    pub value: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScenarioCellRef {
+    pub x: u32,
+    pub y: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum AssertGasParticlesCheckStepRepr {
+    Cell(AssertGasParticlesCellRepr),
+    World(AssertGasParticlesWorldRepr),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssertGasParticlesWorldRepr {
+    gas: ScenarioGasSelector,
+    value: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssertGasParticlesCellRepr {
+    gas: ScenarioGasSelector,
+    cell: ScenarioCellRef,
+    value: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum ScenarioGasSelector {
+    GasId(PrototypeId),
+    Optional(Option<PrototypeId>),
+}
+
+impl From<AssertGasParticlesCheckStepRepr> for AssertGasParticlesCheckStep {
+    fn from(value: AssertGasParticlesCheckStepRepr) -> Self {
+        match value {
+            AssertGasParticlesCheckStepRepr::World(world) => Self {
+                gas: world.gas.into_option(),
+                cell: None,
+                value: world.value,
+            },
+            AssertGasParticlesCheckStepRepr::Cell(cell) => Self {
+                gas: cell.gas.into_option(),
+                cell: Some(cell.cell),
+                value: cell.value,
+            },
+        }
+    }
+}
+
+impl ScenarioGasSelector {
+    fn into_option(self) -> Option<PrototypeId> {
+        match self {
+            Self::GasId(id) => Some(id),
+            Self::Optional(value) => value,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 enum SetCameraZoomStepRepr {
@@ -175,6 +257,41 @@ impl ScenarioStep {
             ScenarioStep::AssertUiExistsStep(_) => "AssertUiExists",
             ScenarioStep::SetCameraPivotStep(_) => "SetCameraPivot",
             ScenarioStep::SetCameraZoomStep(_) => "SetCameraZoom",
+            ScenarioStep::AssertGasParticlesEqStep(_) => "AssertGasParticlesEq",
+            ScenarioStep::AssertGasParticlesNotEqStep(_) => "AssertGasParticlesNotEq",
+            ScenarioStep::AssertGasParticlesLessStep(_) => "AssertGasParticlesLess",
+            ScenarioStep::AssertGasParticlesLessOrEqStep(_) => "AssertGasParticlesLessOrEq",
+            ScenarioStep::AssertGasParticlesGreaterStep(_) => "AssertGasParticlesGreater",
+            ScenarioStep::AssertGasParticlesGreaterOrEqStep(_) => "AssertGasParticlesGreaterOrEq",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ron::{Options, extensions::Extensions};
+
+    use super::ScenarioStep;
+
+    #[test]
+    fn parses_world_gas_assert_step() {
+        let options =
+            Options::default().with_default_extension(Extensions::UNWRAP_VARIANT_NEWTYPES);
+        let parsed: ScenarioStep = options
+            .from_str("AssertGasParticlesEq((gas: None, value: 120))")
+            .expect("step should parse");
+        assert_eq!(parsed.kind(), "AssertGasParticlesEq");
+    }
+
+    #[test]
+    fn parses_cell_gas_assert_step() {
+        let options =
+            Options::default().with_default_extension(Extensions::UNWRAP_VARIANT_NEWTYPES);
+        let parsed: ScenarioStep = options
+            .from_str(
+                "AssertGasParticlesEq((gas: \"base:gas/oxygen\", cell: (x: 1, y: 0), value: 120))",
+            )
+            .expect("step should parse");
+        assert_eq!(parsed.kind(), "AssertGasParticlesEq");
     }
 }

@@ -105,6 +105,34 @@ impl WorldGrid {
     }
 
     #[must_use]
+    pub fn gas_snapshot(&self) -> Vec<GasMixture> {
+        self.gases.snapshot()
+    }
+
+    pub fn replace_gases_from_snapshot(
+        &mut self,
+        cells: Vec<GasMixture>,
+    ) -> Result<(), WorldGridError> {
+        let expected = self.gases.len();
+        let actual = cells.len();
+        if actual != expected {
+            return Err(WorldGridError::GasLayerSizeMismatch { expected, actual });
+        }
+        self.gases.replace_all(cells);
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn build_gas_permeability_mask(&self) -> Vec<bool> {
+        let mut mask = Vec::with_capacity(self.cell_count());
+        for index in 0..self.cell_count() {
+            let permeable = self.solid_cells.get(index).flatten().is_none();
+            mask.push(permeable);
+        }
+        mask
+    }
+
+    #[must_use]
     pub fn cell_index(&self, pos: TilePos) -> Option<CellIndex> {
         if !self.size.contains(pos) {
             return None;
@@ -443,5 +471,36 @@ mod tests {
                 .total_particles(),
             ParticleCount(14)
         );
+    }
+
+    #[test]
+    fn rejects_replacing_gas_snapshot_with_wrong_length() {
+        let mut world = WorldGrid::new(GridSize::new(3, 3)).expect("world should be created");
+        let error = world
+            .replace_gases_from_snapshot(vec![GasMixture::default(); 2])
+            .expect_err("must reject wrong length");
+        assert_eq!(
+            error,
+            WorldGridError::GasLayerSizeMismatch {
+                expected: 9,
+                actual: 2
+            }
+        );
+    }
+
+    #[test]
+    fn gas_permeability_mask_marks_solid_cells_as_blocked() {
+        let mut world = WorldGrid::new(GridSize::new(3, 2)).expect("world should be created");
+        let solid = structure_id("base:solid_cell/floor_cell");
+        world
+            .set_solid_cell_at(TilePos::new(1, 0), Some(solid.clone()))
+            .expect("set solid");
+        world
+            .set_solid_cell_at(TilePos::new(0, 1), Some(solid))
+            .expect("set solid");
+
+        let mask = world.build_gas_permeability_mask();
+        assert_eq!(mask.len(), 6);
+        assert_eq!(mask, vec![true, false, true, false, true, true]);
     }
 }
